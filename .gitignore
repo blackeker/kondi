@@ -30,3 +30,6 @@ Thumbs.db
 logs/
 *.log
 .system_generated/
+
+# Local batch scripts
+*.bat
