@@ -32,17 +32,17 @@ class VideoDownloadService : Service() {
         if (Build.VERSION.SDK_INT >= 29) {
             try {
                 // Try with DATA_SYNC type first (Android 10+)
-                startForeground(1337, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                startForeground(9999, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
             } catch (e: Exception) {
                 // Fallback for strict devices or if permission missing (though it shouldn't be)
                 try {
-                     startForeground(1337, notification)
+                     startForeground(9999, notification)
                 } catch (e2: Exception) {
                     e2.printStackTrace()
                 }
             }
         } else {
-            startForeground(1337, notification)
+            startForeground(9999, notification)
         }
     }
 }

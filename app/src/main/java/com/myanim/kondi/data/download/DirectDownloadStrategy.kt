@@ -94,10 +94,10 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
 
         if (useMultiChunk) {
             downloadMultiChunk(title, url, file, headers, totalSize, numChunks, onProgress)
+            true  // downloadMultiChunk throws on failure, so reaching here means success
         } else {
             downloadSingleThread(title, url, file, headers, supportsRange, onProgress)
         }
-        true
     }
 
     private suspend fun downloadMultiChunk(
@@ -253,7 +253,7 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
         headers: Map<String, String>,
         supportsRange: Boolean,
         onProgress: (Int, Long, Long) -> Unit
-    ) {
+    ): Boolean {
         var completed = false
         var attempt = 0
         val maxAttempts = 10
@@ -368,5 +368,6 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
                 delay(delayMs)
             }
         }
+        return completed
     }
 }

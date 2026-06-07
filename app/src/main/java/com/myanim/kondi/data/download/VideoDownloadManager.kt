@@ -201,7 +201,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
             }
             
             Log.i("VideoDownloadManager", "[$title] Queueing new download to database. ID: $id")
-            val order = queueOrder ?: System.currentTimeMillis().toInt()
+            val order = queueOrder ?: ((System.currentTimeMillis() / 1000) % Int.MAX_VALUE).toInt()
             val download = Download(id = id, title = title, url = url, filePath = file.absolutePath, status = DownloadStatus.PENDING.name, progress = 0, totalBytes = 0, downloadedBytes = 0, createdAt = System.currentTimeMillis(), source = source, queueOrder = order)
             dao.insertDownload(download)
             triggerQueueProcessing()
@@ -348,7 +348,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
             val success = strategy.download(id, title, realUrl, file, headers) { progress, downloaded, total ->
                 if (strategy !is YtDlpDownloadStrategy && pausedDownloads[id] == true) {
                     Log.i("VideoDownloadManager", "[$title] Download paused by user.")
-                    throw java.lang.Exception("PAUSED")
+                    throw PausedException()
                 }
                 val currentTime = System.currentTimeMillis()
                 if (progress != lastUpdateProgress || currentTime - lastUpdateTime > 1000L) {
@@ -389,9 +389,14 @@ class VideoDownloadManager private constructor(private val context: Context) {
                     notificationManager.showFailedNotification(id, title, "İndirme başarısız oldu")
                 }
             }
+        } catch (e: CancellationException) {
+            Log.i("VideoDownloadManager", "[$title] Download cancelled (coroutine cancellation).")
+            val currentDownload = dao.getDownloadById(id)
+            updateDownloadInDb(id) { it.copy(status = DownloadStatus.PAUSED.name, progress = currentDownload?.progress ?: 0, downloadedBytes = currentDownload?.downloadedBytes ?: 0, totalBytes = currentDownload?.totalBytes ?: 0, errorMessage = null) }
+            throw e  // Must rethrow CancellationException for structured concurrency
         } catch (e: Exception) {
-            val isPaused = pausedDownloads[id] == true || e is CancellationException
-            if (!isPaused && e.message != "PAUSED") {
+            val isPaused = pausedDownloads[id] == true || e is PausedException || e.message == "PAUSED"
+            if (!isPaused) {
                 Log.e("VideoDownloadManager", "[$title] Execution exception occurred: ${e.message}", e)
                 updateDownloadInDb(id) { it.copy(status = DownloadStatus.FAILED.name, errorMessage = e.message ?: "Bilinmeyen hata") }
                 notificationManager.showFailedNotification(id, title, e.message ?: "Bilinmeyen hata")
@@ -475,8 +480,13 @@ class VideoDownloadManager private constructor(private val context: Context) {
                 }
                 val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
                 val uri = context.contentResolver.insert(collection, values) ?: return false
-                context.contentResolver.openOutputStream(uri).use { output ->
-                    src.inputStream().use { it.copyTo(output!!) }
+                val output = context.contentResolver.openOutputStream(uri)
+                if (output == null) {
+                    Log.e("VideoDownloadManager", "[${download.title}] Migration failed: Could not open output stream for MediaStore URI")
+                    return false
+                }
+                output.use { out ->
+                    src.inputStream().use { it.copyTo(out) }
                 }
                 values.clear()
                 values.put(MediaStore.Downloads.IS_PENDING, 0)
