@@ -24,13 +24,13 @@ class UserPreferencesManager private constructor(context: Context) {
         }
 
     var downloadThreads: Int
-        get() = prefs.getInt("download_threads", 6)
+        get() = prefs.getInt("download_threads", 3)
         set(value) {
             prefs.edit().putInt("download_threads", value).apply()
         }
 
     var enableMultiChunk: Boolean
-        get() = prefs.getBoolean("enable_multi_chunk", true)
+        get() = prefs.getBoolean("enable_multi_chunk", false)
         set(value) {
             prefs.edit().putBoolean("enable_multi_chunk", value).apply()
         }
