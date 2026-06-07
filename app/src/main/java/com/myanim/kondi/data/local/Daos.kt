@@ -22,13 +22,13 @@ interface DownloadDao {
     @Query("SELECT * FROM downloads WHERE id = :id")
     suspend fun getDownloadById(id: String): Download?
 
-    @Query("SELECT * FROM downloads ORDER BY queueOrder DESC, createdAt ASC")
+    @Query("SELECT * FROM downloads ORDER BY queueOrder ASC, createdAt ASC")
     fun getAllDownloads(): Flow<List<Download>>
-
-    @Query("SELECT * FROM downloads WHERE status = :status ORDER BY queueOrder DESC, createdAt ASC")
+ 
+    @Query("SELECT * FROM downloads WHERE status = :status ORDER BY queueOrder ASC, createdAt ASC")
     fun getDownloadsByStatus(status: String): Flow<List<Download>>
-
-    @Query("SELECT * FROM downloads WHERE source = :source ORDER BY queueOrder DESC, createdAt ASC")
+ 
+    @Query("SELECT * FROM downloads WHERE source = :source ORDER BY queueOrder ASC, createdAt ASC")
     fun getDownloadsBySource(source: String): Flow<List<Download>>
 
     @Query("SELECT * FROM downloads WHERE status = 'COMPLETED' ORDER BY createdAt DESC")

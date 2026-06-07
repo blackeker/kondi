@@ -271,25 +271,32 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
                     onProgress(if (totalExpectedSize > 0) ((existingBytes * 100) / totalExpectedSize).toInt() else 0, existingBytes, totalExpectedSize)
  
                     val appendMode = (response.code == 206 && existingBytes > 0 && supportsRange)
-                    val BUF_SIZE = 131072
+                    val BUF_SIZE = 262144 // 256 KB Buffer for faster chunk delivery
                     val buf = ByteArray(BUF_SIZE)
                     var n = 0
                     var totalRead = if (appendMode) existingBytes else 0L
  
                     var lastCallbackTime = 0L
                     var lastCallbackPct = -1
+                    var yieldCounter = 0
  
                     java.io.FileOutputStream(file, appendMode).use { fos ->
                         java.io.BufferedInputStream(body.byteStream(), BUF_SIZE).use { inp ->
                             while (kotlin.coroutines.coroutineContext.isActive && inp.read(buf).also { n = it } != -1) {
-                                yield()
                                 fos.write(buf, 0, n)
                                 totalRead += n
+                                
+                                // Yield every 4 cycles (~1MB of data) to balance thread responsiveness and loop speed
+                                if (++yieldCounter % 4 == 0) {
+                                    yield()
+                                }
+                                
                                 val pct = if (totalExpectedSize > 0) ((totalRead * 100) / totalExpectedSize).toInt() else 0
                                 val now = System.currentTimeMillis()
                                 var shouldCallback = false
                                 synchronized(onProgress) {
-                                    if (pct != lastCallbackPct || now - lastCallbackTime >= 500L) {
+                                    // Throttle progress callback to 2 seconds to reduce disk writing overhead
+                                    if (pct != lastCallbackPct || now - lastCallbackTime >= 2000L) {
                                         lastCallbackPct = pct
                                         lastCallbackTime = now
                                         shouldCallback = true

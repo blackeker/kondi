@@ -142,7 +142,11 @@ class VideoDownloadManager private constructor(private val context: Context) {
                         job.invokeOnCompletion {
                             downloadJobs.remove(download.id)
                             updateServiceState()
-                            triggerQueueProcessing()
+                            // Launch a delayed trigger so the server has time to cool down before we make a new request
+                            scope.launch {
+                                delay(6000L)
+                                triggerQueueProcessing()
+                            }
                         }
                     }
                 }
