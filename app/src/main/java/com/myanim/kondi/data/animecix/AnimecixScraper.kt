@@ -26,8 +26,8 @@ class AnimecixScraper {
             .writeTimeout(15, TimeUnit.SECONDS)
             .build()
             
-        private var baseUrl = "https://animecix.tv"
-        private var domainFetched = false
+        @Volatile private var baseUrl = "https://animecix.tv"
+        @Volatile private var domainFetched = false
         
         // In-memory caches to persist across screens
         private val detailsCache = ConcurrentHashMap<Int, AnimecixAnime>()
@@ -35,7 +35,7 @@ class AnimecixScraper {
         private val searchCache = ConcurrentHashMap<String, List<AnimecixTitle>>()
         
         private val apiSemaphore = Semaphore(1)
-        private var lastApiRequestTime = 0L
+        @Volatile private var lastApiRequestTime = 0L
     }
 
     private val gson = Gson()
@@ -140,18 +140,15 @@ class AnimecixScraper {
             .addAppHeaders()
             .build()
 
-        val response = try {
-            client.newCall(request).execute()
+        val json = try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext emptyList()
+                response.body?.string() ?: return@withContext emptyList()
+            }
         } catch (e: Exception) {
             Timber.e(e, "Error fetching latest episodes")
             return@withContext emptyList()
         }
-        
-        if (!response.isSuccessful) {
-            return@withContext emptyList()
-        }
-        
-        val json = response.body?.string() ?: return@withContext emptyList()
         return@withContext parseList<AnimecixVideo>(json, object : TypeToken<List<AnimecixVideo>>() {}.type)
     }
 
@@ -168,18 +165,15 @@ class AnimecixScraper {
             .addAppHeaders()
             .build()
             
-        val response = try {
-            client.newCall(request).execute()
+        val json = try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext emptyList()
+                response.body?.string() ?: return@withContext emptyList()
+            }
         } catch (e: Exception) {
             Timber.e(e, "Error fetching category items")
             return@withContext emptyList()
         }
-        
-        if (!response.isSuccessful) {
-            return@withContext emptyList()
-        }
-        
-        val json = response.body?.string() ?: return@withContext emptyList()
         return@withContext parseList<AnimecixTitle>(json, object : TypeToken<List<AnimecixTitle>>() {}.type)
     }
 
@@ -217,7 +211,7 @@ class AnimecixScraper {
                     }
                     if (results.isNotEmpty()) return@run results
                 } catch (e: Exception) {
-                    android.util.Log.e("AnimecixScraper", "Search error for $url", e)
+                    Timber.e(e, "Search error for $url")
                 }
             }
             emptyList<AnimecixTitle>()
