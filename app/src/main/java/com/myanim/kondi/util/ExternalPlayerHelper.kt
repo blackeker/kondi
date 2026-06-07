@@ -11,8 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 object ExternalPlayerHelper {
-    fun launchPlayer(context: Context, url: String, title: String, source: String = "GENERAL") {
-        val scope = CoroutineScope(Dispatchers.Main)
+    fun launchPlayer(context: Context, url: String, title: String, source: String = "GENERAL", scope: CoroutineScope = CoroutineScope(Dispatchers.Main)) {
         scope.launch {
             val finalUrl = if (source != "LOCAL" && source == "ANIMECIX" && !url.startsWith("http") && !url.startsWith("content://") && !url.startsWith("file://")) {
                 withContext(Dispatchers.IO) {

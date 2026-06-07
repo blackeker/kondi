@@ -52,7 +52,7 @@ abstract class KondiDatabase : RoomDatabase() {
                     "kondi_database"
                 )
                     .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
-                    // Removing fallbackToDestructiveMigration to protect user data
+                    .fallbackToDestructiveMigrationFrom(1, 2, 3, 4, 5, 6)
                     .build()
                 INSTANCE = instance
                 instance
