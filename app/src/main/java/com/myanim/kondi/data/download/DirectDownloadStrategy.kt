@@ -19,12 +19,14 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
     // Lock for multi-chunk progress calculations
     private val progressLock = Any()
 
-    // Download client wrapper with timeouts
+    // Download client wrapper with dedicated pool, HTTP/1.1 protocols, and timeouts
     private val downloadClient: OkHttpClient by lazy {
         client.newBuilder()
-            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
+            .connectionPool(okhttp3.ConnectionPool(20, 5, java.util.concurrent.TimeUnit.MINUTES))
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .build()
     }
 
@@ -210,7 +212,7 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
                                 throw e
                             }
                             
-                            val delayMs = minOf(1000L * (1L shl minOf(attempt, 20)), 30000L) + kotlin.random.Random.nextLong(0, 1000)
+                            val delayMs = 1500L + kotlin.random.Random.nextLong(0, 500)
                             delay(delayMs)
                         }
                     }
