@@ -85,7 +85,7 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
 
         val prefManager = com.myanim.kondi.data.prefs.UserPreferencesManager.getInstance(context)
         val multiChunkEnabled = prefManager.enableMultiChunk
-        val numChunks = prefManager.downloadThreads
+        val numChunks = prefManager.downloadThreads.coerceAtMost(3)
 
         // Ensure we only use multi-chunk strategy if threads/chunks count is greater than 1
         val useMultiChunk = supportsRange && totalSize > 0 && multiChunkEnabled && numChunks > 1
