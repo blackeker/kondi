@@ -215,7 +215,8 @@ fun SettingsDialog(
                     columns = GridCells.Fixed(2),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.heightIn(max = 240.dp)
+                    modifier = Modifier.heightIn(max = 240.dp),
+                    userScrollEnabled = false
                 ) {
                     items(AnimeTheme.entries) { theme ->
                         ThemeItem(
@@ -591,7 +592,8 @@ fun SettingsScreen(
                     columns = GridCells.Fixed(2),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.heightIn(max = 240.dp)
+                    modifier = Modifier.heightIn(max = 240.dp),
+                    userScrollEnabled = false
                 ) {
                     items(AnimeTheme.entries) { theme ->
                         ThemeItem(
