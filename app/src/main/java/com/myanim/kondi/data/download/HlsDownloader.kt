@@ -18,7 +18,7 @@ import kotlin.coroutines.coroutineContext
 class HlsDownloader(private val context: android.content.Context, private val client: OkHttpClient) {
     
     private val batchSize: Int
-        get() = com.myanim.kondi.data.prefs.UserPreferencesManager.getInstance(context).downloadThreads.coerceAtMost(3)
+        get() = com.myanim.kondi.data.prefs.UserPreferencesManager.getInstance(context).downloadThreads.coerceAtMost(4)
 
     companion object {
         private const val TAG = "HlsDownloader"

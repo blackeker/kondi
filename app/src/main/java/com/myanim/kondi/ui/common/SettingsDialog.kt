@@ -186,43 +186,7 @@ fun SettingsDialog(
                             )
                         }
 
-                        if (enableMultiChunk) {
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Divider(color = Color.White.copy(alpha = 0.05f))
-                            Spacer(modifier = Modifier.height(12.dp))
-                            
-                            Row(
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = "Bağlantı (Parça) Sayısı",
-                                    fontSize = 14.sp,
-                                    color = Color.White.copy(alpha = 0.9f)
-                                )
-                                Text(
-                                    text = "${downloadThreads.toInt()} Parça",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.Cyan
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Slider(
-                                value = downloadThreads,
-                                onValueChange = { 
-                                    downloadThreads = it
-                                    prefManager.downloadThreads = it.toInt()
-                                },
-                                valueRange = 1f..16f,
-                                steps = 14,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color.Cyan,
-                                    activeTrackColor = Color.Cyan.copy(alpha = 0.4f),
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.1f)
-                                )
-                            )
-                        }
+
                     }
                 }
 
@@ -492,43 +456,7 @@ fun SettingsScreen(
                             )
                         }
 
-                        if (enableMultiChunk) {
-                            Spacer(modifier = Modifier.height(14.dp))
-                            HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                            Spacer(modifier = Modifier.height(12.dp))
-                            
-                            Row(
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = "Bağlantı (Parça) Sayısı",
-                                    fontSize = 14.sp,
-                                    color = Color.White.copy(alpha = 0.9f)
-                                )
-                                Text(
-                                    text = "${downloadThreads.toInt()} Parça",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.Cyan
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Slider(
-                                value = downloadThreads,
-                                onValueChange = { 
-                                    downloadThreads = it
-                                    prefManager.downloadThreads = it.toInt()
-                                },
-                                valueRange = 1f..16f,
-                                steps = 14,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color.Cyan,
-                                    activeTrackColor = Color.Cyan.copy(alpha = 0.4f),
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.1f)
-                                )
-                            )
-                        }
+
                     }
                 }
 
