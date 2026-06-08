@@ -24,7 +24,7 @@ class UserPreferencesManager private constructor(context: Context) {
         }
 
     var downloadThreads: Int
-        get() = prefs.getInt("download_threads", 3)
+        get() = 4
         set(value) {
             prefs.edit().putInt("download_threads", value).apply()
         }
