@@ -16,9 +16,9 @@ import kotlinx.coroutines.delay
 
 class AnimecixExtractors(baseClient: OkHttpClient) {
     private val client = baseClient.newBuilder()
-        .connectTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
-        .writeTimeout(6, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .build()
     private val TAG = "AnimecixExtractors"
     companion object {
@@ -30,20 +30,20 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
         private val DOOD_MD5_PATTERN = Pattern.compile("/pass_md5/([^'\"]+)")
         
         private val tauVideoSemaphore = Semaphore(1)
-        private var lastTauVideoRequestTime = 0L
-        private var currentTauDelayMs = 2500L
+        @Volatile private var lastTauVideoRequestTime = 0L
+        @Volatile private var currentTauDelayMs = 2500L
 
         private val sibnetSemaphore = Semaphore(1)
-        private var lastSibnetRequestTime = 0L
-        private var currentSibnetDelayMs = 1500L
+        @Volatile private var lastSibnetRequestTime = 0L
+        @Volatile private var currentSibnetDelayMs = 1500L
 
         private val googleDriveSemaphore = Semaphore(1)
-        private var lastGoogleDriveRequestTime = 0L
-        private var currentGoogleDriveDelayMs = 1500L
+        @Volatile private var lastGoogleDriveRequestTime = 0L
+        @Volatile private var currentGoogleDriveDelayMs = 1500L
 
         private val doodstreamSemaphore = Semaphore(1)
-        private var lastDoodstreamRequestTime = 0L
-        private var currentDoodstreamDelayMs = 2000L
+        @Volatile private var lastDoodstreamRequestTime = 0L
+        @Volatile private var currentDoodstreamDelayMs = 2000L
     }
 
     private val commonHeaders = mapOf(
@@ -57,7 +57,11 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
         return this
     }
 
-    suspend fun resolveSibNet(url: String): String? = withContext(Dispatchers.IO) {
+    suspend fun resolveSibNet(url: String, depth: Int = 0): String? = withContext(Dispatchers.IO) {
+        if (depth > 2) {
+            Timber.tag(TAG).w("SibNet: Max recursion depth reached for $url")
+            return@withContext null
+        }
         if (url.isBlank()) return@withContext null
         
         sibnetSemaphore.withPermit {
@@ -120,7 +124,7 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                                 val id = url.substringAfter("/embed/").substringBefore("/")
                                 val shellUrl = "https://video.sibnet.ru/shell.php?videoid=$id"
                                 Timber.tag(TAG).d("SibNet trying shell URL: $shellUrl")
-                                return@withContext resolveSibNet(shellUrl)
+                                return@withContext resolveSibNet(shellUrl, depth + 1)
                             }
                             
                             // Method 4: Try original pattern
@@ -505,7 +509,12 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
 
     suspend fun resolveDoodstream(url: String): String? = withContext(Dispatchers.IO) {
         if (url.isBlank()) return@withContext null
-        val domain = if (url.contains("/e/")) url.substringBefore("/e/") else if (url.contains("/d/")) url.substringBefore("/d/") else url.substringBefore("/")
+        val domain = try {
+            val uri = java.net.URI(url)
+            "${uri.scheme}://${uri.host}"
+        } catch (e: Exception) {
+            if (url.contains("/e/")) url.substringBefore("/e/") else if (url.contains("/d/")) url.substringBefore("/d/") else url.substringBefore("/")
+        }
         
         doodstreamSemaphore.withPermit {
             var retryCount = 0
@@ -660,7 +669,11 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
         null
     }
 
-    suspend fun resolveVoe(url: String): String? = withContext(Dispatchers.IO) {
+    suspend fun resolveVoe(url: String, depth: Int = 0): String? = withContext(Dispatchers.IO) {
+        if (depth > 3) {
+            Timber.tag(TAG).w("Voe: Max recursion depth reached for $url")
+            return@withContext null
+        }
         if (url.isBlank()) return@withContext null
         Timber.tag(TAG).d("Resolving Voe: $url")
         try {
@@ -682,7 +695,7 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                     val wcMatcher = Pattern.compile("window\\.location\\.href\\s*=\\s*'([^']+)'").matcher(html)
                     if (wcMatcher.find()) {
                          // Redirect wrapper
-                         return@withContext resolveVoe(wcMatcher.group(1) ?: return@withContext null)
+                         return@withContext resolveVoe(wcMatcher.group(1) ?: return@withContext null, depth + 1)
                     }
                 }
             }

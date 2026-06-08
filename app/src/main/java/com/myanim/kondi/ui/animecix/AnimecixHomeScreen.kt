@@ -67,6 +67,7 @@ fun AnimecixHomeScreen(
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val watchHistory by viewModel.watchHistory.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val isCategoryLoading by viewModel.isCategoryLoading.collectAsStateWithLifecycle()
     val isSearchLoading by viewModel.isSearchLoading.collectAsStateWithLifecycle()
     val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
@@ -209,7 +210,7 @@ fun AnimecixHomeScreen(
                 } else if (selectedTab == 3) { // Categories
                     if (errorMessage != null && categoryItems.isEmpty()) {
                         ErrorState(message = errorMessage!!, onRetry = { viewModel.loadCategoryItems() })
-                    } else if (isLoading && categoryItems.isEmpty()) {
+                    } else if (isCategoryLoading && categoryItems.isEmpty()) {
                         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
                             items(5) { ShimmerSearchItem(brush) }
                         }

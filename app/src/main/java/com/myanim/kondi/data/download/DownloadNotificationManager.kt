@@ -49,7 +49,7 @@ class DownloadNotificationManager private constructor(private val context: Conte
         
         // Notification groups
         private const val GROUP_DOWNLOADS = "downloads_group"
-        const val SUMMARY_ID = 1337
+        const val SUMMARY_ID = 1338  // Must not collide with foreground service ID (9999)
         
         @Volatile
         private var instance: DownloadNotificationManager? = null
@@ -61,6 +61,11 @@ class DownloadNotificationManager private constructor(private val context: Conte
                 }
             }
         }
+    }
+    
+    // Cache the large icon bitmap (M-14 fix)
+    private val largeIcon by lazy {
+        android.graphics.BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher)
     }
     
     init {
@@ -80,6 +85,15 @@ class DownloadNotificationManager private constructor(private val context: Conte
         var lastUpdateTime: Long = 0,
         var isPaused: Boolean = false
     )
+    
+    /**
+     * Generate a unique notification ID from download ID, avoiding collision with reserved IDs.
+     */
+    private fun getNotificationId(downloadId: String): Int {
+        val hash = downloadId.hashCode()
+        // Ensure it doesn't collide with SUMMARY_ID (1338) or foreground service ID (9999)
+        return if (hash == SUMMARY_ID || hash == 9999 || hash == 0) hash + 10000 else hash
+    }
     
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -138,7 +152,7 @@ class DownloadNotificationManager private constructor(private val context: Conte
         )
         
         try {
-            notificationManager.notify(id.hashCode(), notification)
+            notificationManager.notify(getNotificationId(id), notification)
             updateSummaryNotification()
         } catch (e: SecurityException) {
             handleNotificationError(id, e)
@@ -205,7 +219,7 @@ class DownloadNotificationManager private constructor(private val context: Conte
             .build()
         
         try {
-            notificationManager.notify(id.hashCode(), notification)
+            notificationManager.notify(getNotificationId(id), notification)
             updateSummaryNotification()
         } catch (e: SecurityException) {
             handleNotificationError(id, e)
@@ -230,7 +244,7 @@ class DownloadNotificationManager private constructor(private val context: Conte
             .build()
         
         try {
-            notificationManager.notify(id.hashCode(), notification)
+            notificationManager.notify(getNotificationId(id), notification)
             updateSummaryNotification()
         } catch (e: SecurityException) {
             handleNotificationError(id, e)
@@ -277,7 +291,7 @@ class DownloadNotificationManager private constructor(private val context: Conte
             .build()
         
         try {
-            notificationManager.notify(id.hashCode(), notification)
+            notificationManager.notify(getNotificationId(id), notification)
             updateSummaryNotification()
         } catch (e: SecurityException) {
             handleNotificationError(id, e)
@@ -285,7 +299,7 @@ class DownloadNotificationManager private constructor(private val context: Conte
     }
     
     fun cancelNotification(id: String) {
-        notificationManager.cancel(id.hashCode())
+        notificationManager.cancel(getNotificationId(id))
         activeDownloads.remove(id)
         if (activeDownloads.isEmpty()) {
             notificationManager.cancel(SUMMARY_ID)
@@ -296,7 +310,7 @@ class DownloadNotificationManager private constructor(private val context: Conte
     
     fun cancelAllNotifications() {
         activeDownloads.keys.forEach { id ->
-            notificationManager.cancel(id.hashCode())
+            notificationManager.cancel(getNotificationId(id))
         }
         activeDownloads.clear()
         notificationManager.cancel(SUMMARY_ID)
@@ -349,7 +363,7 @@ class DownloadNotificationManager private constructor(private val context: Conte
             .setContentText("$progress% • ${stats.progressText}")
             .setSubText("${stats.speedText} • ${stats.etaText}")
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setLargeIcon(android.graphics.BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher))
+            .setLargeIcon(largeIcon)
             .setProgress(100, progress, false)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)

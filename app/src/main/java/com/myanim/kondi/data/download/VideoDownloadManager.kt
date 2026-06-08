@@ -45,13 +45,13 @@ class VideoDownloadManager private constructor(private val context: Context) {
     private val dao = database.downloadDao()
     private val notificationManager = DownloadNotificationManager.getInstance(context)
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .connectionPool(okhttp3.ConnectionPool(50, 10, TimeUnit.MINUTES))
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
+        .connectionPool(okhttp3.ConnectionPool(5, 5, TimeUnit.MINUTES))
         .dispatcher(okhttp3.Dispatcher().apply {
-            maxRequests = 128
-            maxRequestsPerHost = 64
+            maxRequests = 64
+            maxRequestsPerHost = 16
         })
         .build()
     
@@ -118,9 +118,10 @@ class VideoDownloadManager private constructor(private val context: Context) {
     }
 
     private fun triggerQueueProcessing() {
-        if (queueWorkerJob?.isActive == true) return
+        synchronized(this) {
+            if (queueWorkerJob?.isActive == true) return
 
-        queueWorkerJob = scope.launch(Dispatchers.IO) {
+            queueWorkerJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
                 val activeCount = downloadJobs.size
                 if (activeCount < maxConcurrentDownloads) {
@@ -151,6 +152,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
                     }
                 }
                 delay(1000)
+            }
             }
         }
     }
@@ -224,14 +226,11 @@ class VideoDownloadManager private constructor(private val context: Context) {
                 if (uri != null) {
                     val query = uri.query
                     if (query != null) {
-                        val params = query.split("&").associate { 
-                            val parts = it.split("=")
-                            parts[0] to (if (parts.size > 1) parts[1] else "")
-                        }
-                        val episodeId = params["episodeId"]?.toIntOrNull()
-                        val titleId = params["animeId"]?.toIntOrNull()
-                        val season = params["season"]?.toIntOrNull()
-                        val episodeParam = params["episode"]?.toIntOrNull()
+                        val androidUri = android.net.Uri.parse(url)
+                        val episodeId = androidUri.getQueryParameter("episodeId")?.toIntOrNull()
+                        val titleId = androidUri.getQueryParameter("animeId")?.toIntOrNull()
+                        val season = androidUri.getQueryParameter("season")?.toIntOrNull()
+                        val episodeParam = androidUri.getQueryParameter("episode")?.toIntOrNull()
                         if (episodeId != null || (titleId != null && season != null && episodeParam != null)) {
                             val api = com.myanim.kondi.data.animecix.AnimecixRepository()
                             

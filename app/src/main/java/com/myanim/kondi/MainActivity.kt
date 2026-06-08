@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.*
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
@@ -93,12 +94,12 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                Box(modifier = Modifier.fillMaxSize()) {
                     androidx.compose.animation.SharedTransitionLayout {
                         NavHost(
                             navController = navController,
                             startDestination = if (isOffline) Screen.AnimecixDownloads.route else Screen.AnimecixHome.route,
-                            modifier = Modifier.padding(innerPadding)
+                            modifier = Modifier.fillMaxSize()
                         ) {
                             // Splash removed, starting directly at AnimecixHome
 

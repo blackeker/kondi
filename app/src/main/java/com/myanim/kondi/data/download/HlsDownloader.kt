@@ -419,9 +419,12 @@ class HlsDownloader(private val context: android.content.Context, private val cl
                 .toIntOrNull() ?: Int.MAX_VALUE
         }
 
+        // Atomik birleştirme: önce geçici dosyaya yaz, sonra yeniden adlandır
+        val tempMerge = File(outputFile.parent, "${outputFile.name}.merging")
+        
         // 256 KB merge buffer - daha hızlı disk write
         val mergeBuffer = BUFFER_SIZE * 2
-        BufferedOutputStream(FileOutputStream(outputFile), mergeBuffer).use { output ->
+        BufferedOutputStream(FileOutputStream(tempMerge), mergeBuffer).use { output ->
             val buffer = ByteArray(mergeBuffer)
 
             sortedSegments.forEach { segment ->
@@ -431,8 +434,16 @@ class HlsDownloader(private val context: android.content.Context, private val cl
                         output.write(buffer, 0, bytesRead)
                     }
                 }
-                segment.delete() // Merge edilir edilmez sil - disk tasarrufu
+                // Segment'leri merge sırasında silme - finally bloğunda silinecek
             }
+        }
+        
+        // Başarılı merge sonrası atomik rename
+        if (outputFile.exists()) outputFile.delete()
+        if (!tempMerge.renameTo(outputFile)) {
+            // renameTo başarısız olabilir (farklı dosya sistemi gibi), fallback: kopyala
+            tempMerge.copyTo(outputFile, overwrite = true)
+            tempMerge.delete()
         }
     }
 }

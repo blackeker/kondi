@@ -22,9 +22,9 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
     // Download client wrapper with timeouts
     private val downloadClient: OkHttpClient by lazy {
         client.newBuilder()
-            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
             .build()
     }
 
@@ -258,25 +258,24 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
         var attempt = 0
         val maxAttempts = 10
         
+        var dynamicSupportsRange = supportsRange
+        
         while (!completed && attempt < maxAttempts && coroutineContext.isActive) {
             try {
-                if (!supportsRange && attempt > 0) {
-                    if (file.exists()) file.delete()
-                }
-                
                 val existingBytes = if (file.exists()) file.length() else 0L
-                Log.i(TAG, "[$title] Starting Single-Thread download. Existing bytes: $existingBytes (attempt ${attempt + 1})")
+                Log.i(TAG, "[$title] Starting Single-Thread download. Existing bytes: $existingBytes, supportsRange=$dynamicSupportsRange (attempt ${attempt + 1})")
+                
                 val reqBuilder = Request.Builder().url(url)
                     .apply { headers.forEach { (k, v) -> header(k, v) } }
                 
-                if (existingBytes > 0 && supportsRange) {
+                if (existingBytes > 0 && dynamicSupportsRange) {
                     reqBuilder.header("Range", "bytes=$existingBytes-")
-                } else if (existingBytes > 0 && !supportsRange) {
+                } else if (existingBytes > 0 && !dynamicSupportsRange) {
                     if (file.exists()) file.delete()
                 }
 
                 downloadClient.newCall(reqBuilder.build()).execute().use { response ->
-                    if (!response.isSuccessful && response.code != 206 && response.code != 416) {
+                    if (!response.isSuccessful && response.code != 206 && response.code != 416 && response.code != 200) {
                         Log.e(TAG, "[$title] Single-Thread request failed: HTTP ${response.code}")
                         throw Exception("HTTP ${response.code}: ${response.message}")
                     }
@@ -286,6 +285,15 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
                         onProgress(100, existingBytes, existingBytes)
                         completed = true
                         return@use
+                    }
+
+                    val responseCode = response.code
+                    val appendMode = (responseCode == 206 && existingBytes > 0 && dynamicSupportsRange)
+                    
+                    if (responseCode == 200 && existingBytes > 0) {
+                        Log.i(TAG, "[$title] Range not supported by server (HTTP 200 returned). Deleting existing file and restarting from scratch.")
+                        if (file.exists()) file.delete()
+                        dynamicSupportsRange = false
                     }
 
                     val body = response.body ?: throw Exception("Null body")
@@ -299,20 +307,20 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
                     val contentSize = response.header("Content-Length")?.toLongOrNull() ?: body.contentLength()
                     val totalExpectedSize = if (parsedTotalSize > 0) {
                         parsedTotalSize
-                    } else if (response.code == 206) {
+                    } else if (responseCode == 206) {
                         if (contentSize > 0) contentSize + existingBytes else -1L
                     } else {
                         contentSize
                     }
 
-                    Log.i(TAG, "[$title] Single-Thread connected: HTTP ${response.code}, totalExpectedSize=$totalExpectedSize bytes")
+                    Log.i(TAG, "[$title] Single-Thread connected: HTTP $responseCode, appendMode=$appendMode, totalExpectedSize=$totalExpectedSize bytes")
 
-                    onProgress(if (totalExpectedSize > 0) ((existingBytes * 100) / totalExpectedSize).toInt() else 0, existingBytes, totalExpectedSize)
+                    val startBytes = if (appendMode) existingBytes else 0L
+                    onProgress(if (totalExpectedSize > 0) ((startBytes * 100) / totalExpectedSize).toInt() else 0, startBytes, totalExpectedSize)
 
-                    val appendMode = (response.code == 206 && existingBytes > 0 && supportsRange)
                     val buf = ByteArray(BUFFER_SIZE)
                     var n = 0
-                    var totalRead = if (appendMode) existingBytes else 0L
+                    var totalRead = startBytes
 
                     var lastCallbackTime = 0L
                     var lastCallbackPct = -1
@@ -332,7 +340,6 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
                                 val now = System.currentTimeMillis()
                                 var shouldCallback = false
                                 
-                                // Lock removed from single thread (no multi-thread access occurs here)
                                 if (pct != lastCallbackPct || now - lastCallbackTime >= 2000L) {
                                     lastCallbackPct = pct
                                     lastCallbackTime = now

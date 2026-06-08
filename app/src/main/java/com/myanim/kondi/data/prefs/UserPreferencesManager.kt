@@ -30,7 +30,7 @@ class UserPreferencesManager private constructor(context: Context) {
         }
 
     var enableMultiChunk: Boolean
-        get() = prefs.getBoolean("enable_multi_chunk", false)
+        get() = prefs.getBoolean("enable_multi_chunk", true)
         set(value) {
             prefs.edit().putBoolean("enable_multi_chunk", value).apply()
         }

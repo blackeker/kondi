@@ -75,7 +75,7 @@ fun AnimecixDetailScreen(
         viewModel.checkFavoriteStatus(context, animeId)
     }
 
-    val sourcesList = remember(sources, showSourceDialog, activeVideoForSource) {
+    val sourcesList = remember(sources, showSourceDialog, activeVideoForSource, anime) {
         if (showSourceDialog && activeVideoForSource != null) {
             val selectedVideo = anime?.videos?.find { 
                 it.episodeId == activeVideoForSource?.episodeId ||
@@ -367,7 +367,7 @@ fun AnimecixDetailScreen(
                                     onCancel = { selectedVideos = emptySet() },
                                     onDownload = { 
                                         val currentMaxOrder = downloads.maxOfOrNull { it.queueOrder } ?: 0
-                                        val startOrder = if (currentMaxOrder > 0) currentMaxOrder + 1 else System.currentTimeMillis().toInt()
+                                        val startOrder = if (currentMaxOrder > 0) currentMaxOrder + 1 else ((System.currentTimeMillis() / 1000) % Int.MAX_VALUE).toInt()
                                         val orderedEpisodes = selectedVideos.sortedWith(compareBy({ it.seasonNumber ?: 1 }, { it.episodeNumber ?: 0 }))
                                         var addedCount = 0
                                         orderedEpisodes.forEachIndexed { index, video ->

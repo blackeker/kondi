@@ -284,7 +284,7 @@ fun InfoChip(icon: ImageVector, text: String) {
 fun formatBytes(bytes: Long): String {
     if (bytes <= 0) return "0 B"
     val units = arrayOf("B", "KB", "MB", "GB", "TB")
-    val digitGroup = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
+    val digitGroup = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, units.size - 1)
     return String.format("%.1f %s", bytes / Math.pow(1024.0, digitGroup.toDouble()), units[digitGroup])
 }
 

@@ -33,6 +33,10 @@ class AnimecixViewModel(application: android.app.Application) : androidx.lifecyc
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    
+    // Separate loading state for category items to prevent blocking latest episodes (H-16 fix)
+    private val _isCategoryLoading = MutableStateFlow(false)
+    val isCategoryLoading: StateFlow<Boolean> = _isCategoryLoading.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -102,11 +106,11 @@ class AnimecixViewModel(application: android.app.Application) : androidx.lifecyc
     }
 
     fun loadCategoryItems() {
-        if (_isLoading.value || isLastPage) return
+        if (_isCategoryLoading.value || isLastPage) return
         val category = _selectedCategory.value ?: return
 
         viewModelScope.launch {
-            _isLoading.value = true
+            _isCategoryLoading.value = true
             _errorMessage.value = null
             try {
                 val newItems = repository.getCategoryItems(category.second, currentPage)
@@ -119,7 +123,7 @@ class AnimecixViewModel(application: android.app.Application) : androidx.lifecyc
             } catch (e: Exception) {
                 _errorMessage.value = "Hata oluştu: Kategoriler yüklenemedi."
             } finally {
-                _isLoading.value = false
+                _isCategoryLoading.value = false
             }
         }
     }
@@ -137,7 +141,7 @@ class AnimecixViewModel(application: android.app.Application) : androidx.lifecyc
     fun search(query: String) {
         if (query.isBlank()) return
         
-        android.util.Log.d("AnimecixViewModel", "Search initiated with query: $query")
+        timber.log.Timber.d("Search initiated with query: $query")
         lastSearchQuery = query
         searchCurrentPage = 1
         isSearchLastPage = false
@@ -157,13 +161,13 @@ class AnimecixViewModel(application: android.app.Application) : androidx.lifecyc
             _errorMessage.value = null
             try {
                 val newItems = repository.search(lastSearchQuery, searchCurrentPage)
-                android.util.Log.d("AnimecixViewModel", "Search repository returned ${newItems.size} items for query '$lastSearchQuery' page $searchCurrentPage")
+                timber.log.Timber.d("Search repository returned ${newItems.size} items for query '$lastSearchQuery' page $searchCurrentPage")
                 if (newItems.isEmpty()) {
                     isSearchLastPage = true
                 } else {
                     val updatedResults = _searchResults.value + newItems
                     _searchResults.value = updatedResults
-                    android.util.Log.d("AnimecixViewModel", "Updated search results state, total results: ${updatedResults.size}")
+                    timber.log.Timber.d("Updated search results state, total results: ${updatedResults.size}")
                     searchCurrentPage++
                 }
             } catch (e: Exception) {

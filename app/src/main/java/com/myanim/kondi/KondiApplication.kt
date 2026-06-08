@@ -48,6 +48,9 @@ class KondiApplication : Application(), ImageLoaderFactory {
             .respectCacheHeaders(false)
             .build()
     }
+    
+    @Volatile private var logcatProcess: Process? = null
+    
     companion object {
         private var instance: KondiApplication? = null
         fun getContext(): android.content.Context {
@@ -82,9 +85,17 @@ class KondiApplication : Application(), ImageLoaderFactory {
             val timestamp = timeFormat.format(java.util.Date())
             val logFile = java.io.File(logDir, "logcat_$timestamp.txt")
             
-            // Clear previous logcat buffer and start writing to the file
-            Runtime.getRuntime().exec("logcat -c").waitFor()
-            Runtime.getRuntime().exec(arrayOf("logcat", "-f", logFile.absolutePath))
+            // Run logcat operations on a background thread to avoid blocking main thread
+            Thread {
+                try {
+                    val clearProcess = Runtime.getRuntime().exec("logcat -c")
+                    clearProcess.waitFor()
+                    clearProcess.destroy()
+                    logcatProcess = Runtime.getRuntime().exec(arrayOf("logcat", "-f", logFile.absolutePath))
+                } catch (e: Exception) {
+                    Timber.e(e, "Failed to start logcat capture (background)")
+                }
+            }.start()
         } catch (e: Exception) {
             Timber.e(e, "Failed to start logcat capture")
         }

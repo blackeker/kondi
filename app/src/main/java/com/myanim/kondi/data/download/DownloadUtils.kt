@@ -19,6 +19,10 @@ object DownloadUtils {
         repeat(maxRetries) { attempt ->
             try {
                 return block()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e // Never retry on cancellation
+            } catch (e: PausedException) {
+                throw e // Never retry on pause
             } catch (e: Exception) {
                 if (e.message == "PAUSED" || attempt == maxRetries - 1) {
                     throw e
