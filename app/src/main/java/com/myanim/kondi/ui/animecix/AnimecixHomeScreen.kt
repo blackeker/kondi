@@ -56,6 +56,7 @@ fun AnimecixHomeScreen(
     onDownloadsClick: () -> Unit,
     onSnifferClick: () -> Unit,
     onStorageClick: () -> Unit,
+    onHdFilmClick: () -> Unit = {},
     activeTheme: AnimeTheme = AnimeTheme.DEFAULT,
     onThemeChange: (AnimeTheme) -> Unit = {},
     viewModel: AnimecixViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
@@ -160,6 +161,7 @@ fun AnimecixHomeScreen(
                         }
                     },
                     onStorageClick = onStorageClick,
+                    onHdFilmClick = onHdFilmClick,
                     onBackToHome = onBackToHome,
                     onSettingsClick = {},
                     isSearchExpanded = isSearchExpanded,
@@ -316,6 +318,7 @@ fun AnimecixTopBar(
     selectedTab: Int,
     onTabSelect: (Int) -> Unit,
     onStorageClick: () -> Unit,
+    onHdFilmClick: () -> Unit,
     onBackToHome: () -> Unit,
     onSettingsClick: () -> Unit,
     isSearchExpanded: Boolean,
@@ -373,6 +376,7 @@ fun AnimecixTopBar(
                 title = { Text("AnimeciX", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White) },
                 actions = {
                     IconButton(onClick = { onSearchExpandToggle(true) }) { Icon(Icons.Default.Search, "Ara", tint = Color.White) }
+                    IconButton(onClick = onHdFilmClick) { Icon(Icons.Default.Movie, "Film", tint = Color.White) }
                     IconButton(onClick = onStorageClick) { Icon(Icons.Default.Storage, "Depolama", tint = Color.White) }
                     IconButton(onClick = onBackToHome) { Icon(Icons.Default.Home, "Ana Menü", tint = Color.White) }
                 }
