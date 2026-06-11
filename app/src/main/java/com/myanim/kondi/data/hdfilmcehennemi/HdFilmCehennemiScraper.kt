@@ -19,7 +19,7 @@ import kotlin.math.pow
 
 class HdFilmCehennemiScraper {
     companion object {
-        private val client = com.myanim.kondi.util.NetworkUtils.getUnsafeOkHttpClientBuilder()
+        private val client = com.myanim.kondi.util.NetworkUtils.getSafeOkHttpClientBuilder()
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
