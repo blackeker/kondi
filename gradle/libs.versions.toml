@@ -61,6 +61,7 @@ youtubedl-android = { group = "com.github.yausername.youtubedl-android", name = 
 ffmpeg-kit-https = { group = "io.github.maitrungduc1410", name = "ffmpeg-kit-https", version.ref = "ffmpegKit" }
 timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "timber" }
 play-services-mlkit-text-recognition = { group = "com.google.android.gms", name = "play-services-mlkit-text-recognition", version.ref = "mlkitTextRecognition" }
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version = "21.1.0" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version = "1.8.1" }
 
 [plugins]

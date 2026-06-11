@@ -151,7 +151,7 @@ class KondiApplication : Application(), ImageLoaderFactory {
         try {
             com.yausername.youtubedl_android.YoutubeDL.getInstance().init(this)
             android.util.Log.d("KondiApplication", "YoutubeDL initialized successfully")
-        } catch (e: Throwable) {
+        } catch (e: Exception) {
             android.util.Log.e("KondiApplication", "Failed to initialize YoutubeDL: ${e.message}", e)
         }
 

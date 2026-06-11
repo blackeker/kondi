@@ -30,8 +30,30 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.composed
 
 val CapsuleShape = RoundedCornerShape(50)
+
+fun Modifier.bounceClick() = composed {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+        ),
+        label = "bounceScale"
+    )
+
+    this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
+}
 
 fun Modifier.glassmorphismLayout(
     shape: Shape = RoundedCornerShape(24.dp),
@@ -101,7 +123,7 @@ fun GlassyCard(
 
         // Interactive and Content layer
         val interactiveModifier = if (onClick != null) {
-            Modifier.clickable { onClick() }
+            Modifier.bounceClick().clickable { onClick() }
         } else {
             Modifier
         }

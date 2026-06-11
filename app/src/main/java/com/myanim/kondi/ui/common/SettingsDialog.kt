@@ -29,7 +29,11 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Backup
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.widget.Toast
+import kotlinx.coroutines.launch
 import com.myanim.kondi.data.download.VideoDownloadManager
 import com.myanim.kondi.ui.theme.AnimeTheme
 import com.myanim.kondi.ui.theme.getPalette
@@ -43,6 +47,24 @@ fun SettingsDialog(
     val context = LocalContext.current
     val downloadManager = remember { VideoDownloadManager.getInstance(context) }
     val prefManager = remember { com.myanim.kondi.data.prefs.UserPreferencesManager.getInstance(context) }
+    
+    val backupManager = remember { com.myanim.kondi.data.backup.GoogleDriveBackupManager(context) }
+    var signedInAccount by remember { mutableStateOf(backupManager.getSignedInAccount()) }
+    val coroutineScope = rememberCoroutineScope()
+    
+    val signInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                signedInAccount = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+                Toast.makeText(context, "Giriş başarılı: ${signedInAccount?.email}", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Giriş hatası: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     
     var concurrentDownloads by remember { mutableStateOf(downloadManager.maxConcurrentDownloads.toFloat()) }
     var enableMultiChunk by remember { mutableStateOf(prefManager.enableMultiChunk) }
@@ -228,6 +250,115 @@ fun SettingsDialog(
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Section: Yedekleme (Backup)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Backup, null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Bulut Yedekleme (Google Drive)",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.03f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                        .padding(14.dp)
+                ) {
+                    Column {
+                        if (signedInAccount == null) {
+                            Text(
+                                text = "Favorileriniz, geçmişiniz ve ayarlarınızı Google Drive'a yedekleyin.",
+                                fontSize = 12.sp,
+                                color = Color.White.copy(alpha = 0.6f)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = {
+                                    signInLauncher.launch(backupManager.googleSignInClient.signInIntent)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Cyan),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Google ile Giriş Yap", color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            Text(
+                                text = "Bağlı Hesap: ${signedInAccount?.email}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            val success = backupManager.performBackup(signedInAccount!!)
+                                            if (success) {
+                                                Toast.makeText(context, "Yedekleme başarıyla tamamlandı!", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Yedekleme başarısız oldu.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Cyan),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text("Yedekle", color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            val success = backupManager.performRestore(signedInAccount!!)
+                                            if (success) {
+                                                Toast.makeText(context, "Veriler başarıyla geri yüklendi!", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Geri yükleme başarısız oldu veya yedek bulunamadı.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f)),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text("Geri Yükle", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(
+                                onClick = {
+                                    backupManager.googleSignInClient.signOut().addOnCompleteListener {
+                                        signedInAccount = null
+                                        Toast.makeText(context, "Oturum kapatıldı.", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) {
+                                Text("Oturumu Kapat", color = Color.Red.copy(alpha = 0.8f), fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
 
                 Button(
                     onClick = onDismiss,
@@ -308,6 +439,24 @@ fun SettingsScreen(
     val context = LocalContext.current
     val downloadManager = remember { VideoDownloadManager.getInstance(context) }
     val prefManager = remember { com.myanim.kondi.data.prefs.UserPreferencesManager.getInstance(context) }
+    
+    val backupManager = remember { com.myanim.kondi.data.backup.GoogleDriveBackupManager(context) }
+    var signedInAccount by remember { mutableStateOf(backupManager.getSignedInAccount()) }
+    val coroutineScope = rememberCoroutineScope()
+    
+    val signInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                signedInAccount = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+                Toast.makeText(context, "Giriş başarılı: ${signedInAccount?.email}", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Giriş hatası: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     
     var concurrentDownloads by remember { mutableStateOf(downloadManager.maxConcurrentDownloads.toFloat()) }
     var enableMultiChunk by remember { mutableStateOf(prefManager.enableMultiChunk) }
@@ -601,6 +750,115 @@ fun SettingsScreen(
                             isSelected = currentTheme == theme,
                             onClick = { onThemeSelect(theme) }
                         )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Section: Yedekleme (Backup)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Backup, null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Bulut Yedekleme (Google Drive)",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.03f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                        .padding(14.dp)
+                ) {
+                    Column {
+                        if (signedInAccount == null) {
+                            Text(
+                                text = "Favorileriniz, geçmişiniz ve ayarlarınızı Google Drive'a yedekleyin.",
+                                fontSize = 12.sp,
+                                color = Color.White.copy(alpha = 0.6f)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = {
+                                    signInLauncher.launch(backupManager.googleSignInClient.signInIntent)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Cyan),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Google ile Giriş Yap", color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            Text(
+                                text = "Bağlı Hesap: ${signedInAccount?.email}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            val success = backupManager.performBackup(signedInAccount!!)
+                                            if (success) {
+                                                Toast.makeText(context, "Yedekleme başarıyla tamamlandı!", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Yedekleme başarısız oldu.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Cyan),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text("Yedekle", color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            val success = backupManager.performRestore(signedInAccount!!)
+                                            if (success) {
+                                                Toast.makeText(context, "Veriler başarıyla geri yüklendi!", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Geri yükleme başarısız oldu veya yedek bulunamadı.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f)),
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text("Geri Yükle", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(
+                                onClick = {
+                                    backupManager.googleSignInClient.signOut().addOnCompleteListener {
+                                        signedInAccount = null
+                                        Toast.makeText(context, "Oturum kapatıldı.", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) {
+                                Text("Oturumu Kapat", color = Color.Red.copy(alpha = 0.8f), fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
                 

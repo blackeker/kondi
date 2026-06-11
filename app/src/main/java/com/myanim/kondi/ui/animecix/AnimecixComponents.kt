@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Sort
@@ -233,8 +234,8 @@ fun AnimeList(
                 modifier = Modifier
                     .padding(6.dp)
                     .fillMaxWidth()
-                    .height(280.dp),
-                shape = RoundedCornerShape(16.dp),
+                    .height(260.dp),
+                shape = RoundedCornerShape(18.dp),
                 onClick = video.animeId?.let { id -> { onClick(id) } }
             ) {
                 Column {
@@ -249,15 +250,37 @@ fun AnimeList(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f)), startY = 300f))
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
+                                        startY = 100f
+                                    )
+                                )
                         )
+                        
+                        if (video.episodeNumber != null) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(10.dp)
+                                    .background(Color.Cyan, RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "${video.episodeNumber}. Bölüm",
+                                    color = Color.Black,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
                         
                         IconButton(
                             onClick = { onFavoriteToggle(video) },
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(8.dp)
-                                .background(Color.Black.copy(alpha = 0.4f), androidx.compose.foundation.shape.CircleShape)
+                                .background(Color.Black.copy(alpha = 0.4f), CircleShape)
                         ) {
                             Icon(
                                 imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.Favorite,
@@ -266,22 +289,20 @@ fun AnimeList(
                             )
                         }
                     }
-                    Column(modifier = Modifier.padding(12.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
                         Text(
                             text = video.name ?: "Bölüm Bilinmiyor",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
-                            maxLines = 1,
+                            maxLines = 2,
+                            minLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
-                        if (video.episodeNumber != null) {
-                            Text(
-                                text = "Bölüm ${video.episodeNumber}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.9f)
-                            )
-                        }
                     }
                 }
             }

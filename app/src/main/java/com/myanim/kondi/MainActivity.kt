@@ -23,7 +23,6 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import com.myanim.kondi.ui.animecix.*
 import com.myanim.kondi.ui.storage.StorageManagerScreen
 import com.myanim.kondi.ui.download.DownloadsScreen
-import com.myanim.kondi.ui.hdfilmcehennemi.*
 import com.myanim.kondi.ui.theme.KondiTheme
 import com.myanim.kondi.ui.theme.AnimeTheme
 import com.myanim.kondi.ui.navigation.Screen
@@ -127,9 +126,6 @@ class MainActivity : ComponentActivity() {
                                     onStorageClick = {
                                         navController.navigate(Screen.StorageManager.route)
                                     },
-                                    onHdFilmClick = {
-                                        navController.navigate(Screen.HdFilmHome.route)
-                                    },
                                     activeTheme = activeTheme,
                                     onThemeChange = { theme ->
                                         activeTheme = theme
@@ -161,65 +157,19 @@ class MainActivity : ComponentActivity() {
                             }
 
                          composable(Screen.AnimecixDownloads.route) {
-                             DownloadsScreen(
-                                 sourceFilter = "ANIMECIX",
-                                 onBackClick = { navController.popBackStack() },
-                                 onPlayClick = { download ->
-                                     val uriString = if (download.filePath.startsWith("content://") || download.filePath.startsWith("file://")) {
-                                         download.filePath
-                                     } else {
-                                         "file://" + download.filePath
-                                     }
-                                     ExternalPlayerHelper.launchPlayer(context, uriString, download.title, "LOCAL")
-                                 }
-                             )
-                         }
-
-                         composable(Screen.HdFilmHome.route) {
-                             HdFilmCehennemiHomeScreen(
-                                 sharedTransitionScope = this@SharedTransitionLayout,
-                                 animatedContentScope = this@composable,
-                                 onMovieClick = { url ->
-                                     navController.navigate(Screen.HdFilmDetail.createRoute(url))
-                                 },
-                                 onBackToHome = {
-                                     navController.navigate(Screen.AnimecixHome.route) {
-                                         popUpTo(Screen.AnimecixHome.route) { inclusive = true }
-                                     }
-                                 },
-                                 onDownloadsClick = {
-                                     navController.navigate(Screen.AnimecixDownloads.route)
-                                 },
-                                 onSnifferClick = {
-                                     navController.navigate(Screen.WebSniffer.route)
-                                 },
-                                 onStorageClick = {
-                                     navController.navigate(Screen.StorageManager.route)
-                                 },
-                                 activeTheme = activeTheme,
-                                 onThemeChange = { theme ->
-                                     activeTheme = theme
-                                     sharedPrefs.edit().putString("active_theme", theme.name).apply()
-                                 }
-                             )
-                         }
-
-                         composable(
-                             Screen.HdFilmDetail.route,
-                             arguments = listOf(navArgument("url") { type = NavType.StringType })
-                         ) { backStackEntry ->
-                             val encodedUrl = backStackEntry.arguments?.getString("url") ?: ""
-                             val url = String(android.util.Base64.decode(encodedUrl, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP))
-                             HdFilmCehennemiDetailScreen(
-                                 movieId = url,
-                                 sharedTransitionScope = this@SharedTransitionLayout,
-                                 animatedContentScope = this@composable,
-                                 onBackClick = { navController.popBackStack() },
-                                 onVideoClick = { resolvedUrl, title ->
-                                     ExternalPlayerHelper.launchPlayer(context, resolvedUrl, title, "HDFILMCEHENNEMI")
-                                 }
-                             )
-                         }
+                            DownloadsScreen(
+                                sourceFilter = "ANIMECIX",
+                                onBackClick = { navController.popBackStack() },
+                                onPlayClick = { download ->
+                                    val uriString = if (download.filePath.startsWith("content://") || download.filePath.startsWith("file://")) {
+                                        download.filePath
+                                    } else {
+                                        "file://" + download.filePath
+                                    }
+                                    ExternalPlayerHelper.launchPlayer(context, uriString, download.title, "LOCAL")
+                                }
+                            )
+                        }
 
                         // Hentaizm Graph removed
 
