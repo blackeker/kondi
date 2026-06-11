@@ -235,9 +235,9 @@ fun HdFilmCehennemiHomeScreen(
                                 items(5) { ShimmerSearchItem(brush) }
                             }
                         } else {
-                            val listState = rememberLazyListState()
-                            LaunchedEffect(listState) {
-                                snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+                            val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+                            LaunchedEffect(gridState) {
+                                snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
                                     .collect { lastIndex ->
                                         if (lastIndex == categoryItems.size - 1) viewModel.loadCategoryItems()
                                     }
@@ -248,7 +248,7 @@ fun HdFilmCehennemiHomeScreen(
                                 contentPadding = PaddingValues(12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                                state = listState,
+                                state = gridState,
                                 modifier = Modifier.fillMaxSize()
                             ) {
                                 items(categoryItems) { movie ->
@@ -264,17 +264,7 @@ fun HdFilmCehennemiHomeScreen(
                     }
                     4 -> { // Downloads / Library
                         com.myanim.kondi.ui.common.LibraryScreen(
-                            isEmbedded = true,
-                            onPlayClick = { download ->
-                                if (download.filePath.isNotBlank()) {
-                                    val uriString = if (download.filePath.startsWith("content://") || download.filePath.startsWith("file://")) {
-                                        download.filePath
-                                    } else {
-                                        "file://" + download.filePath
-                                    }
-                                    com.myanim.kondi.util.ExternalPlayerHelper.launchPlayer(context, uriString, download.title, "LOCAL")
-                                }
-                            }
+                            isEmbedded = true
                         )
                     }
                 }
@@ -285,7 +275,6 @@ fun HdFilmCehennemiHomeScreen(
             SettingsDialog(
                 currentTheme = activeTheme,
                 onThemeSelect = onThemeChange,
-                onSnifferClick = onSnifferClick,
                 onDismiss = { showSettingsDialog = false }
             )
         }
