@@ -80,7 +80,7 @@ class HdFilmCehennemiScraper {
 
     private fun getHeaders(): Map<String, String> {
         return mapOf(
-            "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
             "Referer" to "$baseUrl/",
             "Origin" to baseUrl,
             "X-Requested-With" to "fetch"
