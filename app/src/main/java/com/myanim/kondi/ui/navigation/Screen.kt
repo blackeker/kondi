@@ -8,4 +8,11 @@ sealed class Screen(val route: String) {
     object AnimecixDownloads : Screen("animecix_downloads")
     object StorageManager : Screen("storage_manager")
     object WebSniffer : Screen("web_sniffer")
+    object HdFilmHome : Screen("hdfilm_home")
+    object HdFilmDetail : Screen("hdfilm_detail/{url}") {
+        fun createRoute(url: String): String {
+            val encodedUrl = android.util.Base64.encodeToString(url.toByteArray(), android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
+            return "hdfilm_detail/$encodedUrl"
+        }
+    }
 }
