@@ -92,8 +92,7 @@ class HdFilmCehennemiScraper {
         return this
     }
 
-    @Serializable
-    private data class ApiResponse(val html: String)
+    data class ApiResponse(val html: String)
 
     @Serializable
     data class SearchResponse(val results: List<String>)
@@ -111,6 +110,7 @@ class HdFilmCehennemiScraper {
             else -> "$baseUrl/load/page/$page/$categoryPath/"
         }
 
+        Timber.d("getCategoryItems: url=$url")
         val request = Request.Builder()
             .url(url)
             .addHeaders()
@@ -118,21 +118,36 @@ class HdFilmCehennemiScraper {
 
         try {
             client.newCall(request).execute().use { response ->
+                Timber.d("getCategoryItems response code: ${response.code}")
                 if (!response.isSuccessful) return@withContext emptyList()
                 val json = response.body?.string() ?: return@withContext emptyList()
+                Timber.d("getCategoryItems json size: ${json.length}")
                 val apiResponse = gson.fromJson(json, ApiResponse::class.java)
-                val doc = Jsoup.parse(apiResponse.html)
+                val doc = Jsoup.parse(apiResponse.html, baseUrl)
                 
-                return@withContext doc.select("article.item, a.poster").map { element ->
+                val elements = doc.select("article.item, a.poster")
+                Timber.d("getCategoryItems found HTML elements: ${elements.size}")
+                
+                val items = elements.map { element ->
                     val linkElement = if (element.tagName() == "a") element else element.selectFirst("a[href]")
-                    val titleElement = element.selectFirst("h2.flbaslik, strong.poster-title, h4.title")
+                    val titleElement = element.selectFirst("h2.flbaslik, strong.poster-title, h4.title, span.poster-title")
                     val imgElement = element.selectFirst("img")
 
                     val href = linkElement?.attr("href") ?: ""
                     val title = titleElement?.text() ?: imgElement?.attr("alt") ?: "Unknown Title"
-                    val poster = imgElement?.run { absUrl("data-src").ifBlank { absUrl("src") } }
+                    
+                    val dataSrc = imgElement?.attr("data-src") ?: ""
+                    val src = imgElement?.attr("src") ?: ""
+                    val poster = if (dataSrc.startsWith("http")) {
+                        dataSrc
+                    } else if (src.startsWith("http") && !src.contains("data:image")) {
+                        src
+                    } else {
+                        imgElement?.absUrl("data-src")?.ifBlank { imgElement.absUrl("src") }
+                    }
+                    
                     val rating = element.selectFirst(".imdb, span.imdb")?.text()
-                    val year = element.selectFirst("span.anayil")?.text()
+                    val year = element.selectFirst("span.anayil, div.poster-meta span")?.text()
 
                     HdFilmCehennemiTitle(
                         id = href.removePrefix(baseUrl).trim('/'),
@@ -142,6 +157,8 @@ class HdFilmCehennemiScraper {
                         year = year
                     )
                 }
+                Timber.d("getCategoryItems parsed list size: ${items.size}")
+                return@withContext items
             }
         } catch (e: Exception) {
             Timber.e(e, "Error loading category items: $categoryPath")
