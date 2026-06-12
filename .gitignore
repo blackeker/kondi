@@ -1,35 +1,12 @@
-# Gradle files and caches
 .gradle/
 build/
-app/build/
-
-# Kotlin compiler files
-.kotlin/
-
-# IntelliJ IDEA / Android Studio files
-.idea/
-*.iml
-*.ipr
-*.iws
-.navigation/
-
-# Local configuration files (contains local SDK paths, etc.)
 local.properties
-
-# OS generated files
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+*.apk
+*.aar
+*.keystore
 .DS_Store
 Thumbs.db
-
-# Keystores & credentials
-*.jks
-*.keystore
-*.pk8
-*.pem
-
-# Logs and temporary files
-logs/
-*.log
-.system_generated/
-
-# Local batch scripts
-*.bat
