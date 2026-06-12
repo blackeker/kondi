@@ -86,29 +86,49 @@ class GoogleDriveBackupManager(private val context: Context) {
     }
 
     suspend fun performBackup(account: GoogleSignInAccount): Boolean = withContext(Dispatchers.IO) {
-        val token = getAccessToken(account) ?: return@withContext false
+        var token = getAccessToken(account) ?: return@withContext false
         val backupContent = createBackupJson()
 
         try {
-            val fileId = findBackupFile(token)
-            if (fileId != null) {
-                // Update existing backup
-                updateBackupFile(token, fileId, backupContent)
-            } else {
-                // Create new backup
-                createBackupFile(token, backupContent)
-            }
+            executeBackupFlow(token, backupContent)
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Backup failed", e)
-            false
+            val is403 = e is IOException && e.message?.contains("403") == true
+            if (is403) {
+                Log.d(TAG, "403 error detected, clearing cached token and retrying...")
+                try {
+                    GoogleAuthUtil.clearToken(context, token)
+                } catch (ex: Exception) {
+                    Log.e(TAG, "Failed to clear token", ex)
+                }
+                token = getAccessToken(account) ?: return@withContext false
+                try {
+                    executeBackupFlow(token, backupContent)
+                    true
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Backup retry failed", e2)
+                    false
+                }
+            } else {
+                Log.e(TAG, "Backup failed", e)
+                false
+            }
+        }
+    }
+
+    private fun executeBackupFlow(token: String, backupContent: String) {
+        val fileId = findBackupFile(token)
+        if (fileId != null) {
+            updateBackupFile(token, fileId, backupContent)
+        } else {
+            createBackupFile(token, backupContent)
         }
     }
 
     suspend fun performRestore(account: GoogleSignInAccount): Boolean = withContext(Dispatchers.IO) {
-        val token = getAccessToken(account) ?: return@withContext false
+        var token = getAccessToken(account) ?: return@withContext false
         try {
-            val fileId = findBackupFile(token) ?: return@withContext false
+            val fileId = executeRestoreFlow(account, token) ?: return@withContext false
             val json = downloadBackupFile(token, fileId) ?: return@withContext false
             
             val payload = gson.fromJson(json, BackupPayload::class.java) ?: return@withContext false
@@ -139,6 +159,32 @@ class GoogleDriveBackupManager(private val context: Context) {
         }
     }
 
+    private suspend fun executeRestoreFlow(account: GoogleSignInAccount, initialToken: String): String? {
+        var token = initialToken
+        return try {
+            findBackupFile(token)
+        } catch (e: Exception) {
+            val is403 = e is IOException && e.message?.contains("403") == true
+            if (is403) {
+                Log.d(TAG, "403 error on restore, clearing token and retrying...")
+                try {
+                    GoogleAuthUtil.clearToken(context, token)
+                } catch (ex: Exception) {
+                    Log.e(TAG, "Failed to clear token", ex)
+                }
+                token = getAccessToken(account) ?: return null
+                try {
+                    findBackupFile(token)
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Restore retry failed", e2)
+                    null
+                }
+            } else {
+                null
+            }
+        }
+    }
+
     private fun findBackupFile(token: String): String? {
         val url = "https://www.googleapis.com/drive/v3/files?q=name='$BACKUP_FILENAME'+and+'appDataFolder'+in+parents&spaces=appDataFolder"
         val request = Request.Builder()
@@ -147,6 +193,7 @@ class GoogleDriveBackupManager(private val context: Context) {
             .build()
 
         client.newCall(request).execute().use { response ->
+            if (response.code == 403) throw IOException("403 Forbidden")
             if (!response.isSuccessful) return null
             val body = response.body?.string() ?: return null
             val json = JSONObject(body)
@@ -181,6 +228,7 @@ class GoogleDriveBackupManager(private val context: Context) {
             .build()
 
         client.newCall(request).execute().use { response ->
+            if (response.code == 403) throw IOException("403 Forbidden")
             if (!response.isSuccessful) throw IOException("Failed to create file: ${response.code} ${response.message}")
         }
     }
@@ -193,6 +241,7 @@ class GoogleDriveBackupManager(private val context: Context) {
             .build()
 
         client.newCall(request).execute().use { response ->
+            if (response.code == 403) throw IOException("403 Forbidden")
             if (!response.isSuccessful) throw IOException("Failed to update file: ${response.code} ${response.message}")
         }
     }
@@ -204,6 +253,7 @@ class GoogleDriveBackupManager(private val context: Context) {
             .build()
 
         client.newCall(request).execute().use { response ->
+            if (response.code == 403) throw IOException("403 Forbidden")
             if (!response.isSuccessful) return null
             return response.body?.string()
         }
