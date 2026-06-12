@@ -219,7 +219,9 @@ fun AnimecixHomeScreen(
                         LaunchedEffect(listState) {
                             snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
                                 .collect { lastIndex ->
-                                    if (lastIndex == categoryItems.size - 1) viewModel.loadCategoryItems()
+                                    if (lastIndex != null && lastIndex >= categoryItems.size - 4) {
+                                        viewModel.loadCategoryItems()
+                                    }
                                 }
                         }
                         SearchList(
@@ -249,7 +251,9 @@ fun AnimecixHomeScreen(
                                     LaunchedEffect(gridState) {
                                         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
                                             .collect { lastIndex ->
-                                                if (lastIndex == episodes.size - 1) viewModel.loadMoreLatest()
+                                                if (lastIndex != null && lastIndex >= episodes.size - 4) {
+                                                    viewModel.loadMoreLatest()
+                                                }
                                             }
                                     }
                                     
@@ -434,7 +438,11 @@ fun SearchTabContent(
             val state = rememberLazyListState()
             LaunchedEffect(state) {
                 snapshotFlow { state.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
-                    .collect { lastIndex -> if (lastIndex == searchResults.size - 1) onLoadMore() }
+                    .collect { lastIndex ->
+                        if (lastIndex != null && lastIndex >= searchResults.size - 4) {
+                            onLoadMore()
+                        }
+                    }
             }
             SearchList(results = searchResults, sharedTransitionScope = sharedTransitionScope, animatedContentScope = animatedContentScope, onClick = onAnimeClick, state = state)
         } else if (isSearchLoading) {

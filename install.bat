@@ -183,14 +183,9 @@ goto :Menu
 cls
 set "mytime=%time: =0%"
 set "LOG_PATH=logs\logcat_%date:~10,4%%date:~7,2%%date:~4,2%_%mytime:~0,2%%mytime:~3,2%.txt"
-echo  [INFO] Logcat baslatiliyor... (Gurkan: OpenGLRenderer filtreli)
-for /f "tokens=1" %%i in ('%ADB_CMD% shell pidof -s %PACKAGE_NAME% 2^>nul') do set "APP_PID=%%i"
+echo  [INFO] Logcat baslatiliyor... (Otomatik Yeniden Baglanma Aktif)
 %ADB_CMD% logcat -c
-if "%APP_PID%"=="" (
-    start "Logcat [Filter:%PACKAGE_NAME%]" powershell -NoExit -Command "& { %ADB_CMD% logcat -v time | Select-String '%PACKAGE_NAME%' | where { $_ -notmatch 'OpenGLRenderer|unimplemented' } | Tee-Object -FilePath '%LOG_PATH%' }"
-) else (
-    start "Logcat [PID:%APP_PID%]" powershell -NoExit -Command "& { %ADB_CMD% logcat -v time --pid=%APP_PID% | where { $_ -notmatch 'OpenGLRenderer|unimplemented' } | Tee-Object -FilePath '%LOG_PATH%' }"
-)
+start "Logcat [Kondi]" powershell -NoExit -Command "& { while ($true) { Write-Host 'Logcat baslatildi...'; %ADB_CMD% logcat -v time | Select-String '%PACKAGE_NAME%' | where { $_ -notmatch 'OpenGLRenderer|unimplemented' } | Tee-Object -FilePath '%LOG_PATH%' -Append; Write-Host 'Baglanti koptu (EOF), 2 saniye icinde tekrar baglaniliyor...'; Start-Sleep -Seconds 2 } }"
 goto :Menu
 
 :Error
