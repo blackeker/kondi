@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -103,7 +104,7 @@ fun SearchList(
             }
         }
 
-        items(sortedResults, key = { it.id ?: it.hashCode() }) { result ->
+        items(sortedResults, key = { "sr_${it.id ?: it.name ?: it.hashCode()}_${sortedResults.indexOf(it)}" }) { result ->
             val animeId = result.id ?: 0
             GlassyCard(
                 modifier = Modifier
@@ -228,7 +229,7 @@ fun AnimeList(
             }
         }
 
-        items(sortedVideos, key = { it.url ?: it.hashCode() }) { video ->
+        items(sortedVideos, key = { "sv_${it.url ?: it.name ?: it.hashCode()}_${sortedVideos.indexOf(it)}" }) { video ->
             val isFavorite = remember(favoriteUrls, video.url) { favoriteUrls.contains(video.url) }
             GlassyCard(
                 modifier = Modifier
@@ -329,7 +330,7 @@ fun ContinueWatchingRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(history, key = { it.videoUrl }) { item ->
+            itemsIndexed(history, key = { index, item -> "ac_hist_${item.videoUrl}_$index" }) { index, item ->
                 GlassyCard(
                     modifier = Modifier
                         .width(220.dp)

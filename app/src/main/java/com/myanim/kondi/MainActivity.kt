@@ -6,32 +6,40 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.navigation.NavType
-import androidx.navigation.navArgument
-import androidx.compose.material3.Scaffold
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.myanim.kondi.ui.common.*
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import com.myanim.kondi.ui.animecix.*
+import androidx.navigation.toRoute
+import com.myanim.kondi.ui.animecix.FavoritesScreen
+import com.myanim.kondi.ui.animecix.HomeScreen
+import com.myanim.kondi.ui.animecix.AnimecixDetailScreen
+import com.myanim.kondi.ui.catalog.ProviderCatalogScreen
+import com.myanim.kondi.ui.common.FloatingGlassDock
+import com.myanim.kondi.ui.common.SettingsDialog
+import com.myanim.kondi.ui.hub.ProviderHubScreen
 import com.myanim.kondi.ui.storage.StorageManagerScreen
 import com.myanim.kondi.ui.download.DownloadsScreen
 import com.myanim.kondi.ui.theme.KondiTheme
 import com.myanim.kondi.ui.theme.AnimeTheme
-import com.myanim.kondi.ui.navigation.Screen
+import com.myanim.kondi.ui.navigation.*
 import com.myanim.kondi.util.ExternalPlayerHelper
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import java.nio.charset.StandardCharsets
-
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import kotlinx.coroutines.CoroutineScope
 
 class MainActivity : ComponentActivity() {
     // Navigation trigger state
@@ -48,7 +56,7 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
-    @OptIn(ExperimentalSharedTransitionApi::class)
+    @OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -80,99 +88,75 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         setContent {
-                var activeTheme by remember { mutableStateOf(initialTheme) }
-                val navController = rememberNavController()
-                val context = LocalContext.current
-                
-                KondiTheme(animeTheme = activeTheme) {
-                    // Observe navigationRoute state
-                    val targetRoute by navigationRoute
+            var activeTheme by remember { mutableStateOf(initialTheme) }
+            val navController = rememberNavController()
+            val context = LocalContext.current
+            val coroutineScope = rememberCoroutineScope()
+            val initialPage = remember { mutableIntStateOf(if (isOffline) 3 else 0) }
+            
+            KondiTheme(animeTheme = activeTheme) {
+                // Observe navigationRoute state (For notification clicks)
+                val targetRoute by navigationRoute
                 LaunchedEffect(targetRoute) {
                     targetRoute?.let { route ->
-                        navController.navigate(route)
+                        if (route == "animecix_downloads") {
+                            initialPage.intValue = 3
+                        }
                         navigationRoute.value = null // Reset
                     }
                 }
 
-                Box(modifier = Modifier.fillMaxSize()) {
-                    androidx.compose.animation.SharedTransitionLayout {
-                        NavHost(
-                            navController = navController,
-                            startDestination = if (isOffline) Screen.AnimecixDownloads.route else Screen.AnimecixHome.route,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            // Splash removed, starting directly at AnimecixHome
-
-                            // Animecix Graph
-                            composable(Screen.AnimecixHome.route) {
-                                AnimecixHomeScreen(
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedContentScope = this@composable,
-                                    onAnimeClick = { id ->
-                                        navController.navigate(Screen.AnimecixDetail.createRoute(id))
-                                    },
-                                    onVideoClick = { url, _, _, _, title ->
-                                        ExternalPlayerHelper.launchPlayer(context, url, title, "ANIMECIX")
-                                    },
-                                    onBackToHome = {
-                                        (context as? android.app.Activity)?.finish()
-                                    },
-                                    onDownloadsClick = {
-                                        navController.navigate(Screen.AnimecixDownloads.route)
-                                    },
-                                    onSnifferClick = {
-                                        navController.navigate(Screen.WebSniffer.route)
-                                    },
-                                    onStorageClick = {
-                                        navController.navigate(Screen.StorageManager.route)
-                                    },
-                                    activeTheme = activeTheme,
-                                    onThemeChange = { theme ->
-                                        activeTheme = theme
-                                        sharedPrefs.edit().putString("active_theme", theme.name).apply()
-                                    }
-                                )
-                            }
-                            
-                            composable(Screen.StorageManager.route) {
-                                StorageManagerScreen(
-                                    onBackClick = { navController.popBackStack() }
-                                )
-                            }
-
-                            composable(
-                                Screen.AnimecixDetail.route,
-                                arguments = listOf(navArgument("id") { type = NavType.IntType })
-                            ) { backStackEntry ->
-                                val id = backStackEntry.arguments?.getInt("id") ?: 0
-                                AnimecixDetailScreen(
-                                    animeId = id,
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedContentScope = this@composable,
-                                    onBackClick = { navController.popBackStack() },
-                                    onVideoClick = { url, _, _, _, title ->
+                androidx.compose.animation.SharedTransitionLayout {
+                    NavHost(
+                        navController = navController,
+                        startDestination = MainDestination,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        composable<MainDestination> {
+                            MainScreen(
+                                activeTheme = activeTheme,
+                                onThemeChange = { theme ->
+                                    activeTheme = theme
+                                    sharedPrefs.edit().putString("active_theme", theme.name).apply()
+                                },
+                                onAnimeClick = { id ->
+                                    navController.navigate(DetailDestination(id))
+                                },
+                                onVideoClick = { url, title ->
+                                    coroutineScope.launch {
                                         ExternalPlayerHelper.launchPlayer(context, url, title, "ANIMECIX")
                                     }
-                                )
-                            }
-
-                         composable(Screen.AnimecixDownloads.route) {
-                            DownloadsScreen(
-                                sourceFilter = "ANIMECIX",
-                                onBackClick = { navController.popBackStack() },
-                                onPlayClick = { download ->
-                                    val uriString = if (download.filePath.startsWith("content://") || download.filePath.startsWith("file://")) {
-                                        download.filePath
-                                    } else {
-                                        "file://" + download.filePath
-                                    }
-                                    ExternalPlayerHelper.launchPlayer(context, uriString, download.title, "LOCAL")
-                                }
+                                },
+                                onStorageClick = {
+                                    navController.navigate(StorageDestination)
+                                },
+                                isOffline = isOffline,
+                                context = context,
+                                coroutineScope = coroutineScope,
+                                initialPage = initialPage.intValue,
+                                onPageSelected = { initialPage.intValue = it }
                             )
                         }
 
-                        // Hentaizm Graph removed
+                        composable<StorageDestination> {
+                            StorageManagerScreen(
+                                onBackClick = { navController.popBackStack() }
+                            )
+                        }
 
+                        composable<DetailDestination> { backStackEntry ->
+                            val detail = backStackEntry.toRoute<DetailDestination>()
+                            AnimecixDetailScreen(
+                                animeId = detail.id,
+                                sharedTransitionScope = this@SharedTransitionLayout,
+                                animatedContentScope = this@composable,
+                                onBackClick = { navController.popBackStack() },
+                                onVideoClick = { url, _, _, _, title ->
+                                    coroutineScope.launch {
+                                        ExternalPlayerHelper.launchPlayer(context, url, title, "ANIMECIX")
+                                    }
+                                }
+                            )
                         }
                     }
                 }
@@ -189,6 +173,119 @@ class MainActivity : ComponentActivity() {
             navigationRoute.value = navigateTo
             intent.removeExtra("navigate_to")
         }
-        
+    }
+}
+
+@Composable
+fun MainScreen(
+    activeTheme: AnimeTheme,
+    onThemeChange: (AnimeTheme) -> Unit,
+    onAnimeClick: (Int) -> Unit,
+    onVideoClick: (String, String) -> Unit,
+    onStorageClick: () -> Unit,
+    isOffline: Boolean,
+    context: Context,
+    coroutineScope: CoroutineScope,
+    initialPage: Int,
+    onPageSelected: (Int) -> Unit
+) {
+    val pagerState = rememberPagerState(
+        initialPage = initialPage,
+        pageCount = { 4 }
+    )
+    var showSettingsDialog by remember { mutableStateOf(false) }
+
+    if (showSettingsDialog) {
+        SettingsDialog(
+            currentTheme = activeTheme,
+            onThemeSelect = onThemeChange,
+            onDismiss = { showSettingsDialog = false }
+        )
+    }
+
+    // Sync external page changes (e.g. from notification clicks)
+    LaunchedEffect(initialPage) {
+        if (pagerState.currentPage != initialPage) {
+            pagerState.scrollToPage(initialPage)
+        }
+    }
+
+    // Sync internal page swipes back to the parent state only when scroll settles
+    LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
+        if (!pagerState.isScrollInProgress) {
+            onPageSelected(pagerState.currentPage)
+        }
+    }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = Color.Transparent,
+        bottomBar = {
+            FloatingGlassDock(
+                selectedTab = pagerState.currentPage,
+                onTabSelect = { targetTab ->
+                    coroutineScope.launch {
+                        pagerState.animateScrollToPage(targetTab)
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = true
+            ) { page ->
+                when (page) {
+                    0 -> ProviderHubScreen(
+                        onAnimeClick = onAnimeClick,
+                        onVideoClick = onVideoClick,
+                        onSearchClick = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(1)
+                            }
+                        },
+                        onStorageClick = onStorageClick,
+                        onExploreAllClick = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(1)
+                            }
+                        },
+                        onSettingsClick = {
+                            showSettingsDialog = true
+                        }
+                    )
+                    1 -> HomeScreen(
+                        viewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+                        onAnimeClick = onAnimeClick,
+                        onVideoClick = onVideoClick,
+                        onStorageClick = onStorageClick,
+                        onSettingsClick = {
+                            showSettingsDialog = true
+                        }
+                    )
+                    2 -> FavoritesScreen(
+                        viewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+                        onAnimeClick = onAnimeClick
+                    )
+                    3 -> DownloadsScreen(
+                        sourceFilter = "ANIMECIX",
+                        isEmbedded = true,
+                        onBackClick = {},
+                        onPlayClick = { download ->
+                            val uriString = if (download.filePath.startsWith("content://") || download.filePath.startsWith("file://")) {
+                                download.filePath
+                            } else {
+                                "file://" + download.filePath
+                            }
+                            coroutineScope.launch {
+                                ExternalPlayerHelper.launchPlayer(context, uriString, download.title, "LOCAL")
+                            }
+                        }
+                    )
+                }
+            }
+        }
     }
 }

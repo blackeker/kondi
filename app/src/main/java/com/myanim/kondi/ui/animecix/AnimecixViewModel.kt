@@ -77,7 +77,10 @@ class AnimecixViewModel(application: android.app.Application) : androidx.lifecyc
                 if (newEpisodes.isEmpty()) {
                     isLatestLastPage = true
                 } else {
-                    _latestEpisodes.value += newEpisodes
+                    val combined = (_latestEpisodes.value + newEpisodes).distinctBy { 
+                        it.url ?: "${it.name}_${it.seasonNumber}_${it.episodeNumber}" 
+                    }
+                    _latestEpisodes.value = combined
                     latestCurrentPage++
                 }
             } catch (e: Exception) {
@@ -117,7 +120,10 @@ class AnimecixViewModel(application: android.app.Application) : androidx.lifecyc
                 if (newItems.isEmpty()) {
                     isLastPage = true
                 } else {
-                    _categoryItems.value += newItems
+                    val combined = (_categoryItems.value + newItems).distinctBy {
+                        it.id?.toString() ?: it.name ?: it.hashCode().toString()
+                    }
+                    _categoryItems.value = combined
                     currentPage++
                 }
             } catch (e: Exception) {
@@ -165,9 +171,11 @@ class AnimecixViewModel(application: android.app.Application) : androidx.lifecyc
                 if (newItems.isEmpty()) {
                     isSearchLastPage = true
                 } else {
-                    val updatedResults = _searchResults.value + newItems
-                    _searchResults.value = updatedResults
-                    timber.log.Timber.d("Updated search results state, total results: ${updatedResults.size}")
+                    val combined = (_searchResults.value + newItems).distinctBy {
+                        it.id?.toString() ?: it.name ?: it.hashCode().toString()
+                    }
+                    _searchResults.value = combined
+                    timber.log.Timber.d("Updated search results state, total results: ${combined.size}")
                     searchCurrentPage++
                 }
             } catch (e: Exception) {

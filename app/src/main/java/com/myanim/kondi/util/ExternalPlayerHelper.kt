@@ -11,23 +11,21 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 object ExternalPlayerHelper {
-    fun launchPlayer(context: Context, url: String, title: String, source: String = "GENERAL", scope: CoroutineScope = CoroutineScope(Dispatchers.Main)) {
-        scope.launch {
-            val finalUrl = if (source != "LOCAL" && source == "ANIMECIX" && !url.startsWith("http") && !url.startsWith("content://") && !url.startsWith("file://")) {
-                withContext(Dispatchers.IO) {
-                    try {
-                        AnimecixScraper().resolveSource(url)
-                    } catch (e: Exception) {
-                        url
-                    }
-                }
-            } else {
+    suspend fun launchPlayer(context: Context, url: String, title: String, source: String = "GENERAL") = withContext(Dispatchers.Default) {
+        val finalUrl = if (source != "LOCAL" && source == "ANIMECIX" && !url.startsWith("http") && !url.startsWith("content://") && !url.startsWith("file://")) {
+            try {
+                AnimecixScraper().resolveSource(url)
+            } catch (e: Exception) {
                 url
             }
+        } else {
+            url
+        }
 
+        withContext(Dispatchers.Main) {
             if (finalUrl.isNullOrBlank()) {
                 Toast.makeText(context, "Kaynak çözümlenemedi veya geçersiz.", Toast.LENGTH_SHORT).show()
-                return@launch
+                return@withContext
             }
 
             try {
@@ -38,7 +36,7 @@ object ExternalPlayerHelper {
                     putExtra("forcename", title)
                     
                     // Add headers for players that support them (MX, VLC, etc.)
-                    val headers = arrayOf("Referer", "https://animecix.net/", "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+                    val headers = arrayOf("Referer", "https://animecix.net/", "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
                     putExtra("headers", headers)
                     putExtra("http-user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
                     

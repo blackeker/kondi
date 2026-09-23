@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.ui.text.TextStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.widget.Toast
@@ -69,6 +71,8 @@ fun SettingsDialog(
     var concurrentDownloads by remember { mutableStateOf(downloadManager.maxConcurrentDownloads.toFloat()) }
     var enableMultiChunk by remember { mutableStateOf(prefManager.enableMultiChunk) }
     var downloadThreads by remember { mutableStateOf(prefManager.downloadThreads.toFloat()) }
+    var hdwpServerIp by remember { mutableStateOf(prefManager.hdwpServerIp) }
+    var hdwpTargetPhone by remember { mutableStateOf(prefManager.hdwpTargetPhone) }
 
     Dialog(onDismissRequest = onDismiss) {
         GlassyCard(
@@ -207,13 +211,88 @@ fun SettingsDialog(
                                 )
                             )
                         }
-
-
                     }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
-                Divider(color = Color.White.copy(alpha = 0.08f))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Section: VDS / WhatsApp Uzaktan İndirme Sunucusu
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Share, null, tint = Color.Cyan, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "VDS / WhatsApp İndirme Sunucusu",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.03f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                        .padding(14.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column {
+                            Text("VDS Sunucu IP / Adresi (örn: http://sunucu-ip:3000)", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedTextField(
+                                value = hdwpServerIp,
+                                onValueChange = {
+                                    hdwpServerIp = it
+                                    prefManager.hdwpServerIp = it
+                                },
+                                placeholder = { Text("http://192.168.1.1:3000", color = Color.Gray, fontSize = 14.sp) },
+                                textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp),
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color.Cyan,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                                    focusedContainerColor = Color.White.copy(alpha = 0.02f),
+                                    unfocusedContainerColor = Color.Transparent
+                                )
+                            )
+                        }
+
+                        Column {
+                            Text("Hedef WhatsApp Numarası (örn: 905XXXXXXXXX)", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedTextField(
+                                value = hdwpTargetPhone,
+                                onValueChange = {
+                                    hdwpTargetPhone = it
+                                    prefManager.hdwpTargetPhone = it
+                                },
+                                placeholder = { Text("905XXXXXXXXX", color = Color.Gray, fontSize = 14.sp) },
+                                textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp),
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color.Cyan,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                                    focusedContainerColor = Color.White.copy(alpha = 0.02f),
+                                    unfocusedContainerColor = Color.Transparent
+                                )
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
                 Spacer(modifier = Modifier.height(20.dp))
 
                 // Section: Temalar
@@ -461,6 +540,9 @@ fun SettingsScreen(
     var concurrentDownloads by remember { mutableStateOf(downloadManager.maxConcurrentDownloads.toFloat()) }
     var enableMultiChunk by remember { mutableStateOf(prefManager.enableMultiChunk) }
     var downloadThreads by remember { mutableStateOf(prefManager.downloadThreads.toFloat()) }
+    
+    var hdwpServerIp by remember { mutableStateOf(prefManager.hdwpServerIp) }
+    var hdwpTargetPhone by remember { mutableStateOf(prefManager.hdwpTargetPhone) }
     
     // Cache sizes
     var imageCacheSize by remember { mutableStateOf(downloadManager.getImageCacheSize()) }
@@ -712,6 +794,82 @@ fun SettingsScreen(
                             ) {
                                 Text("Temizle", fontSize = 12.sp, color = Color.White)
                             }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Section: WhatsApp Gönderim Entegrasyonu
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Share, null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "WhatsApp Gönderim Entegrasyonu",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.03f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                        .padding(14.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column {
+                            Text("Gönderici Sunucu IP / Domain", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedTextField(
+                                value = hdwpServerIp,
+                                onValueChange = {
+                                    hdwpServerIp = it
+                                    prefManager.hdwpServerIp = it
+                                },
+                                textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                                    focusedContainerColor = Color.White.copy(alpha = 0.02f),
+                                    unfocusedContainerColor = Color.Transparent
+                                )
+                            )
+                        }
+
+                        Column {
+                            Text("Gönderilecek WhatsApp Telefon Numarası", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedTextField(
+                                value = hdwpTargetPhone,
+                                onValueChange = {
+                                    hdwpTargetPhone = it
+                                    prefManager.hdwpTargetPhone = it
+                                },
+                                placeholder = { Text("örn: 905XXXXXXXXX", color = Color.Gray, fontSize = 14.sp) },
+                                textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                                    focusedContainerColor = Color.White.copy(alpha = 0.02f),
+                                    unfocusedContainerColor = Color.Transparent
+                                )
+                            )
                         }
                     }
                 }

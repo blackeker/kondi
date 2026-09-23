@@ -506,7 +506,8 @@ fun SourceSelectionBottomSheet(
     sourceSizes: Map<String, Long>,
     onResolveSize: (String) -> Unit,
     onPlayClick: (String) -> Unit,
-    onDownloadClick: (com.myanim.kondi.data.animecix.AnimecixSource) -> Unit
+    onDownloadClick: (com.myanim.kondi.data.animecix.AnimecixSource) -> Unit,
+    onHdwpClick: (com.myanim.kondi.data.animecix.AnimecixSource) -> Unit = {}
 ) {
     if (show) {
         ModalBottomSheet(
@@ -604,6 +605,23 @@ fun SourceSelectionBottomSheet(
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
+                                
+                                Spacer(modifier = Modifier.width(8.dp))
+                                
+                                IconButton(
+                                    onClick = { onHdwpClick(source) },
+                                    colors = IconButtonDefaults.iconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                    ),
+                                    modifier = Modifier.border(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudUpload,
+                                        contentDescription = "WhatsApp ile İndir",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -617,7 +635,8 @@ fun SourceSelectionBottomSheet(
 fun BatchDownloadOverlay(
     count: Int,
     onCancel: () -> Unit,
-    onDownload: () -> Unit
+    onDownload: () -> Unit,
+    onHdwpDownload: () -> Unit
 ) {
     if (count > 0) {
         GlassyBox(
@@ -665,7 +684,17 @@ fun BatchDownloadOverlay(
                     ) {
                         Icon(Icons.Default.Close, contentDescription = "İptal", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = onHdwpDownload,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(Color(0xFF25D366).copy(alpha = 0.15f), CircleShape)
+                            .border(1.dp, Color(0xFF25D366).copy(alpha = 0.3f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.CloudUpload, contentDescription = "WhatsApp Gönder", tint = Color(0xFF25D366), modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = onDownload,
                         colors = ButtonDefaults.buttonColors(containerColor = Color.White),

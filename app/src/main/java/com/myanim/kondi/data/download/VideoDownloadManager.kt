@@ -122,7 +122,6 @@ class VideoDownloadManager private constructor(private val context: Context) {
             if (queueWorkerJob?.isActive == true) return
 
             queueWorkerJob = scope.launch(Dispatchers.IO) {
-            while (isActive) {
                 val activeCount = downloadJobs.size
                 if (activeCount < maxConcurrentDownloads) {
                     val allDownloads = _downloadsFlow.value.ifEmpty { dao.getAllDownloads().firstOrNull() ?: emptyList() }
@@ -151,8 +150,6 @@ class VideoDownloadManager private constructor(private val context: Context) {
                         }
                     }
                 }
-                delay(1000)
-            }
             }
         }
     }
@@ -527,6 +524,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
             dao.updateDownloadProgress(id, DownloadStatus.PAUSED.name, download.progress, download.downloadedBytes, download.totalBytes, System.currentTimeMillis())
             notificationManager.showPausedNotification(id, download.title, download.downloadedBytes, download.totalBytes)
             Log.i("VideoDownloadManager", "[${download.title}] Download successfully set to PAUSED state in database.")
+            triggerQueueProcessing()
         }
     }
      
@@ -555,6 +553,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
             updateDownloadInDb(id) { it.copy(status = DownloadStatus.FAILED.name, errorMessage = "İptal edildi") }
             notificationManager.cancelNotification(id)
             Log.i("VideoDownloadManager", "[$title] Download successfully cancelled and set to FAILED (Cancelled) state.")
+            triggerQueueProcessing()
         }
     }
      
@@ -584,8 +583,11 @@ class VideoDownloadManager private constructor(private val context: Context) {
                 }
  
                 dao.deleteDownload(download)
+                downloadJobs[id]?.cancel()
+                downloadJobs.remove(id)
                 notificationManager.cancelNotification(id)
                 Log.i("VideoDownloadManager", "[${download.title}] Download successfully purged from database and memory.")
+                triggerQueueProcessing()
             } else {
                 Log.w("VideoDownloadManager", "deleteDownload failed: Download ID $id not found in DB.")
             }

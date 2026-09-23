@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -202,7 +203,7 @@ fun StorageManagerScreen(
                         }
                     }
                 } else {
-                    items(completedDownloads, key = { it.id }) { download ->
+                    itemsIndexed(completedDownloads, key = { index, download -> "store_${download.id}_$index" }) { index, download ->
                         ListItem(
                             headlineContent = { Text(download.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) },
                             supportingContent = { Text("${download.totalBytes / (1024 * 1024)} MB", color = Color.White.copy(alpha = 0.5f)) },

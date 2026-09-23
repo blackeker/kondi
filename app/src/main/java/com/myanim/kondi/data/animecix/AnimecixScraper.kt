@@ -79,39 +79,51 @@ class AnimecixScraper {
     private suspend fun ensureDomain() {
         if (domainFetched) return
         withContext(Dispatchers.IO) {
-            try {
-                // Try loading from SharedPreferences cache first
-                val context = try { com.myanim.kondi.KondiApplication.getContext() } catch (e: Exception) { null }
-                val sharedPrefs = context?.getSharedPreferences("kondi_prefs", android.content.Context.MODE_PRIVATE)
-                
-                val cachedUrl = sharedPrefs?.getString("animecix_cached_domain", null)
-                if (cachedUrl != null && !domainFetched) {
-                    baseUrl = cachedUrl
-                    domainFetched = true
-                    Timber.d("Loaded cached Animecix domain from SharedPreferences: $baseUrl")
-                }
+            val context = try { com.myanim.kondi.KondiApplication.getContext() } catch (e: Exception) { null }
+            val sharedPrefs = context?.getSharedPreferences("kondi_prefs", android.content.Context.MODE_PRIVATE)
+            
+            val cachedUrl = sharedPrefs?.getString("animecix_cached_domain", null)
+            if (cachedUrl != null && !domainFetched) {
+                baseUrl = cachedUrl
+                domainFetched = true
+                Timber.d("Loaded cached Animecix domain from SharedPreferences: $baseUrl")
+            }
 
-                val request = Request.Builder()
-                    .url("https://raw.githubusercontent.com/Kraptor123/domainListesi/refs/heads/main/eklenti_domainleri.txt")
-                    .build()
-                client.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val content = response.body?.string() ?: ""
-                        content.lines().forEach { line ->
-                            if (line.startsWith("|Animecix:")) {
-                                val fetchedUrl = line.substringAfter("|Animecix:").trim()
-                                if (fetchedUrl.isNotEmpty()) {
-                                    baseUrl = fetchedUrl
-                                    domainFetched = true
-                                    sharedPrefs?.edit()?.putString("animecix_cached_domain", fetchedUrl)?.apply()
-                                    Timber.d("Successfully fetched and cached new Animecix domain: $baseUrl")
+            val urls = listOf(
+                "https://raw.githubusercontent.com/Kraptor123/domainListesi/refs/heads/main/eklenti_domainleri.txt",
+                "https://cdn.jsdelivr.net/gh/Kraptor123/domainListesi@main/eklenti_domainleri.txt"
+            )
+            var success = false
+            var lastException: Exception? = null
+            
+            for (url in urls) {
+                try {
+                    val request = Request.Builder().url(url).build()
+                    client.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) {
+                            val content = response.body?.string() ?: ""
+                            content.lines().forEach { line ->
+                                if (line.startsWith("|Animecix:")) {
+                                    val fetchedUrl = line.substringAfter("|Animecix:").trim()
+                                    if (fetchedUrl.isNotEmpty()) {
+                                        baseUrl = fetchedUrl
+                                        domainFetched = true
+                                        sharedPrefs?.edit()?.putString("animecix_cached_domain", fetchedUrl)?.apply()
+                                        Timber.d("Successfully fetched and cached Animecix domain from $url: $baseUrl")
+                                        success = true
+                                    }
                                 }
                             }
                         }
                     }
+                    if (success) break
+                } catch (e: Exception) {
+                    lastException = e
+                    Timber.w(e, "Failed to fetch Animecix domain from $url")
                 }
-            } catch (e: Exception) {
-                Timber.e(e, "Error ensuring domain")
+            }
+            if (!success && !domainFetched) {
+                throw lastException ?: java.io.IOException("Could not resolve Animecix domain list")
             }
         }
     }
@@ -140,14 +152,9 @@ class AnimecixScraper {
             .addAppHeaders()
             .build()
 
-        val json = try {
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext emptyList()
-                response.body?.string() ?: return@withContext emptyList()
-            }
-        } catch (e: Exception) {
-            Timber.e(e, "Error fetching latest episodes")
-            return@withContext emptyList()
+        val json = client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw java.io.IOException("HTTP error: ${response.code}")
+            response.body?.string() ?: throw java.io.IOException("Empty body")
         }
         return@withContext parseList<AnimecixVideo>(json, object : TypeToken<List<AnimecixVideo>>() {}.type)
     }
@@ -288,7 +295,7 @@ class AnimecixScraper {
             }
         } catch (e: Exception) {
             Timber.e(e, "Error parsing list: ${e.message}")
-            emptyList()
+            throw e
         }
     }
     
@@ -296,13 +303,14 @@ class AnimecixScraper {
         detailsCache[id]?.let { return@withContext it }
         ensureDomain()
         val request = Request.Builder().url("$baseUrl/secure/titles/$id").addAppHeaders().build()
-            
-        val response = try {
-            client.newCall(request).execute()
-        } catch (e: Exception) { null }
-        
-        if (response?.isSuccessful != true) return@withContext null
-        val json = response.body?.string() ?: return@withContext null
+        val json = try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                response.body?.string() ?: return@withContext null
+            }
+        } catch (e: Exception) {
+            return@withContext null
+        }
         
         try {
             val responseObj = JSONObject(json)
@@ -429,48 +437,50 @@ class AnimecixScraper {
                 }
                 
                 if (response != null) {
-                    if (response.isSuccessful) {
-                        val json = response.body?.string() ?: return@withContext emptyList()
-                        
-                        try {
-                            val jsonTrimmed = json.trim()
-                            if (jsonTrimmed.startsWith("[")) {
-                                return@withContext gson.fromJson(jsonTrimmed, object : TypeToken<List<AnimecixSource>>() {}.type)
-                            } else if (jsonTrimmed.startsWith("{")) {
-                                val responseObj = JSONObject(jsonTrimmed)
-                                
-                                val dataArray = responseObj.optJSONArray("data")
-                                if (dataArray != null) {
-                                    return@withContext gson.fromJson(dataArray.toString(), object : TypeToken<List<AnimecixSource>>() {}.type)
-                                }
- 
-                                val videosArray = responseObj.optJSONArray("videos")
-                                if (videosArray != null) {
-                                    return@withContext gson.fromJson(videosArray.toString(), object : TypeToken<List<AnimecixSource>>() {}.type)
-                                }
-                                
-                                val videoObj = responseObj.optJSONObject("video")
-                                if (videoObj != null) {
-                                    val actualVideosArray = videoObj.optJSONArray("videos")
-                                    if (actualVideosArray != null) {
-                                        return@withContext gson.fromJson(actualVideosArray.toString(), object : TypeToken<List<AnimecixSource>>() {}.type)
-                                    } else if (videoObj.has("url")) {
-                                        val source = gson.fromJson(videoObj.toString(), AnimecixSource::class.java)
-                                        return@withContext listOf(source)
+                    response.use { resp ->
+                        if (resp.isSuccessful) {
+                            val json = resp.body?.string() ?: return@withContext emptyList()
+                            
+                            try {
+                                val jsonTrimmed = json.trim()
+                                if (jsonTrimmed.startsWith("[")) {
+                                    return@withContext gson.fromJson(jsonTrimmed, object : TypeToken<List<AnimecixSource>>() {}.type)
+                                } else if (jsonTrimmed.startsWith("{")) {
+                                    val responseObj = JSONObject(jsonTrimmed)
+                                    
+                                    val dataArray = responseObj.optJSONArray("data")
+                                    if (dataArray != null) {
+                                        return@withContext gson.fromJson(dataArray.toString(), object : TypeToken<List<AnimecixSource>>() {}.type)
+                                    }
+      
+                                    val videosArray = responseObj.optJSONArray("videos")
+                                    if (videosArray != null) {
+                                        return@withContext gson.fromJson(videosArray.toString(), object : TypeToken<List<AnimecixSource>>() {}.type)
+                                    }
+                                    
+                                    val videoObj = responseObj.optJSONObject("video")
+                                    if (videoObj != null) {
+                                        val actualVideosArray = videoObj.optJSONArray("videos")
+                                        if (actualVideosArray != null) {
+                                            return@withContext gson.fromJson(actualVideosArray.toString(), object : TypeToken<List<AnimecixSource>>() {}.type)
+                                        } else if (videoObj.has("url")) {
+                                            val source = gson.fromJson(videoObj.toString(), AnimecixSource::class.java)
+                                            return@withContext listOf(source)
+                                        }
                                     }
                                 }
+                            } catch (e: Exception) {
+                                Timber.e(e, "Error parsing video sources")
                             }
-                        } catch (e: Exception) {
-                            Timber.e(e, "Error parsing video sources")
-                        }
-                        
-                        return@withContext emptyList()
-                    } else if (response.code == 429) {
-                        Timber.w("getVideoSources API failed: 429 - Retrying...")
-                    } else {
-                        Timber.w("getVideoSources API failed: ${response.code} - Retrying...")
-                        if (response.code == 404) {
+                            
                             return@withContext emptyList()
+                        } else if (resp.code == 429) {
+                            Timber.w("getVideoSources API failed: 429 - Retrying...")
+                        } else {
+                            Timber.w("getVideoSources API failed: ${resp.code} - Retrying...")
+                            if (resp.code == 404) {
+                                return@withContext emptyList()
+                            }
                         }
                     }
                 }

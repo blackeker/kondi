@@ -22,4 +22,8 @@ Thumbs.db
 .wwebjs_cache/
 .vscode/
 .idea/
+logs/
+.kotlin/
+*.log
+test_error.txt
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 // Relocated imports handled by common.* below.
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -71,8 +72,8 @@ fun AnimecixDetailScreen(
     val downloads by downloadManager.downloadsFlow.collectAsStateWithLifecycle(emptyList())
 
     LaunchedEffect(animeId) { 
-        viewModel.loadAnimeDetails(context, animeId)
-        viewModel.checkFavoriteStatus(context, animeId)
+        viewModel.loadAnimeDetails(animeId)
+        viewModel.checkFavoriteStatus(animeId)
     }
 
     val sourcesList = remember(sources, showSourceDialog, activeVideoForSource, anime) {
@@ -168,6 +169,43 @@ fun AnimecixDetailScreen(
                     showSourceDialog = false
                     activeVideoForSource = null
                 }
+            },
+            onHdwpClick = { source ->
+                scope.launch {
+                    val rawUrl = source.url
+                    val resolvedUrl = viewModel.resolveUrl(rawUrl)
+                    if (resolvedUrl != null && resolvedUrl.startsWith("http")) {
+                        val lowerRawUrl = rawUrl.lowercase()
+                        val urlToDownload = if (
+                            lowerRawUrl.contains("sibnet") || 
+                            lowerRawUrl.contains("ok.ru") || 
+                            lowerRawUrl.contains("odnoklassniki") || 
+                            lowerRawUrl.contains("streamtape") || 
+                            lowerRawUrl.contains("voe") || 
+                            lowerRawUrl.contains("uqload") || 
+                            lowerRawUrl.contains("dood")
+                        ) {
+                            rawUrl
+                        } else {
+                            resolvedUrl
+                        }
+
+                        val seasonNum = activeVideoForSource?.seasonNumber ?: 1
+                        val episodeNum = activeVideoForSource?.episodeNumber ?: 0
+                        val animeName = anime?.title ?: "Anime"
+                        val formattedTitle = "$animeName - Sezon $seasonNum Bölüm $episodeNum"
+
+                        com.myanim.kondi.util.HdwpDownloaderHelper.sendDownloadRequest(
+                            context = context, 
+                            videoUrl = urlToDownload,
+                            title = formattedTitle
+                        )
+                    } else {
+                        Toast.makeText(context, "Kaynak çözümlenemedi", Toast.LENGTH_SHORT).show()
+                    }
+                    showSourceDialog = false
+                    activeVideoForSource = null
+                }
             }
         )
 
@@ -228,7 +266,7 @@ fun AnimecixDetailScreen(
                             IconButton(onClick = { isSearchActive = true }) {
                                 Icon(Icons.Default.Search, contentDescription = "Ara", tint = Color.White)
                             }
-                            IconButton(onClick = { anime?.let { viewModel.toggleFavorite(context, it) } }) {
+                            IconButton(onClick = { anime?.let { viewModel.toggleFavorite(it) } }) {
                                 Icon(
                                     imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                     contentDescription = "Favori",
@@ -247,7 +285,7 @@ fun AnimecixDetailScreen(
             }
         ) { padding ->
             if (errorMessage != null && anime == null) {
-                ErrorState(message = errorMessage!!, onRetry = { viewModel.retry(context, animeId) })
+                ErrorState(message = errorMessage!!, onRetry = { viewModel.retry(animeId) })
             } else if (isLoading && anime == null) {
                 LoadingPlaceholder(padding)
             } else {
@@ -308,7 +346,7 @@ fun AnimecixDetailScreen(
                                 }
                             
                             displaySeasons.forEach { (seasonNum, seasonEpisodes) ->
-                                item {
+                                item(key = "season_header_$seasonNum") {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                                         verticalAlignment = Alignment.CenterVertically
@@ -328,7 +366,7 @@ fun AnimecixDetailScreen(
                                         )
                                     }
                                 }
-                                items(seasonEpisodes, key = { it.episodeId ?: it.url ?: "${it.seasonNumber}_${it.episodeNumber}" }) { video ->
+                                itemsIndexed(seasonEpisodes, key = { index, video -> "season_${seasonNum}_ep_${video.episodeId ?: video.url ?: video.episodeNumber ?: index}_$index" }) { index, video ->
                                     val episodeNumber = video.episodeNumber ?: 0
                                     
                                     val expectedTitleOld = if (video.seasonNumber == null || video.seasonNumber == 1) "${details.title} - $episodeNumber. Bölüm" else null
@@ -399,6 +437,10 @@ fun AnimecixDetailScreen(
                                         } else {
                                             Toast.makeText(context, "Seçilen tüm bölümler zaten indirilmiş!", Toast.LENGTH_SHORT).show()
                                         }
+                                        selectedVideos = emptySet()
+                                    },
+                                    onHdwpDownload = {
+                                        viewModel.bulkHdwpDownload(selectedVideos.toList(), details.title, context)
                                         selectedVideos = emptySet()
                                     }
                                 )

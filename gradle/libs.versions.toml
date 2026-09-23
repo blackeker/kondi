@@ -21,6 +21,7 @@ youtubedl = "0.14.0"
 ffmpegKit = "6.0.1"
 timber = "5.0.1"
 mlkitTextRecognition = "19.0.1"
+kotlinxSerialization = "1.6.3"
 
 [libraries]
 mediarouter = { group = "androidx.mediarouter", name = "mediarouter", version.ref = "mediarouter" }
@@ -63,9 +64,11 @@ timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "tim
 play-services-mlkit-text-recognition = { group = "com.google.android.gms", name = "play-services-mlkit-text-recognition", version.ref = "mlkitTextRecognition" }
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version = "21.1.0" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version = "1.8.1" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

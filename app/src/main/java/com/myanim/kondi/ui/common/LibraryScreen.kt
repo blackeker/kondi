@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.ui.platform.LocalContext
 import com.myanim.kondi.data.local.KondiDatabase
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import com.myanim.kondi.data.local.WatchedAnime
 import com.myanim.kondi.data.local.DownloadedAnime
 
@@ -23,6 +24,7 @@ fun LibraryScreen(
 ) {
     val context = LocalContext.current
     val database = remember { KondiDatabase.getDatabase(context) }
+    val coroutineScope = rememberCoroutineScope()
     
     var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("İzlenilen", "İndirilen")
@@ -72,7 +74,9 @@ fun LibraryScreen(
                     sourceFilter = null,
                     isEmbedded = true,
                     onPlayClick = { download ->
-                        com.myanim.kondi.util.ExternalPlayerHelper.launchPlayer(context, download.filePath, download.title, "LOCAL")
+                        coroutineScope.launch {
+                            com.myanim.kondi.util.ExternalPlayerHelper.launchPlayer(context, download.filePath, download.title, "LOCAL")
+                        }
                     }
                 )
             }

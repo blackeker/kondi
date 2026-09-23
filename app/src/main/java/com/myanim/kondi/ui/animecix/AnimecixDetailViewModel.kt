@@ -1,7 +1,9 @@
 package com.myanim.kondi.ui.animecix
 
+import android.app.Application
 import android.content.Context
 import android.widget.Toast
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.myanim.kondi.data.animecix.AnimecixAnime
@@ -23,9 +25,9 @@ sealed class AnimecixDetailState {
     data class Error(val message: String) : AnimecixDetailState()
 }
 
-class AnimecixDetailViewModel : ViewModel() {
+class AnimecixDetailViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = AnimecixRepository()
-    private var downloadManager: VideoDownloadManager? = null
+    private val downloadManager: VideoDownloadManager = VideoDownloadManager.getInstance(application)
     
     private val _anime = MutableStateFlow<AnimecixAnime?>(null)
     val anime: StateFlow<AnimecixAnime?> = _anime.asStateFlow()
@@ -48,20 +50,14 @@ class AnimecixDetailViewModel : ViewModel() {
     private val _isFavorite = MutableStateFlow(false)
     val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
 
-    fun init(context: Context) {
-        if (downloadManager == null) {
-            downloadManager = VideoDownloadManager.getInstance(context)
-        }
-    }
-
-    fun loadAnimeDetails(context: Context, id: Int) {
+    fun loadAnimeDetails(id: Int) {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
             
             // First check if it's a favorite and has cached details
             try {
-                val db = com.myanim.kondi.data.local.KondiDatabase.getDatabase(context)
+                val db = com.myanim.kondi.data.local.KondiDatabase.getDatabase(getApplication())
                 val favorite = db.favoriteDao().getFavoriteByUrl("animecix_$id")
                 if (favorite != null && favorite.detailsJson != null) {
                     val cachedDetails = com.google.gson.Gson().fromJson(favorite.detailsJson, AnimecixAnime::class.java) as? AnimecixAnime
@@ -82,7 +78,7 @@ class AnimecixDetailViewModel : ViewModel() {
                      
                      // Update cache if it's a favorite
                      if (_isFavorite.value) {
-                         val db = com.myanim.kondi.data.local.KondiDatabase.getDatabase(context)
+                         val db = com.myanim.kondi.data.local.KondiDatabase.getDatabase(getApplication())
                          val url = "animecix_$id"
                          val favorite = db.favoriteDao().getFavoriteByUrl(url)
                          if (favorite != null) {
@@ -103,8 +99,8 @@ class AnimecixDetailViewModel : ViewModel() {
         }
     }
 
-    fun retry(context: Context, id: Int) {
-        loadAnimeDetails(context, id)
+    fun retry(id: Int) {
+        loadAnimeDetails(id)
     }
 
     fun updateSearchQuery(query: String) {
@@ -115,17 +111,17 @@ class AnimecixDetailViewModel : ViewModel() {
         _isAscending.value = !_isAscending.value
     }
 
-    fun checkFavoriteStatus(context: Context, animeId: Int) {
+    fun checkFavoriteStatus(animeId: Int) {
         viewModelScope.launch {
-            val db = com.myanim.kondi.data.local.KondiDatabase.getDatabase(context)
+            val db = com.myanim.kondi.data.local.KondiDatabase.getDatabase(getApplication())
             val isFav = db.favoriteDao().isFavorite("animecix_$animeId")
             _isFavorite.value = isFav
         }
     }
 
-    fun toggleFavorite(context: Context, anime: AnimecixAnime) {
+    fun toggleFavorite(anime: AnimecixAnime) {
         viewModelScope.launch {
-            val db = com.myanim.kondi.data.local.KondiDatabase.getDatabase(context)
+            val db = com.myanim.kondi.data.local.KondiDatabase.getDatabase(getApplication())
             val url = "animecix_${anime.id}"
             if (_isFavorite.value) {
                 db.favoriteDao().deleteFavoriteByUrl(url)
@@ -168,15 +164,107 @@ class AnimecixDetailViewModel : ViewModel() {
         }
     }
 
+    fun bulkHdwpDownload(selectedEpisodes: List<AnimecixVideo>, animeName: String, context: Context) {
+        viewModelScope.launch {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "${selectedEpisodes.size} bölüm için WhatsApp gönderimi başlatılıyor...", Toast.LENGTH_SHORT).show()
+            }
+            
+            val orderedEpisodes = selectedEpisodes.sortedWith(compareBy({ it.seasonNumber ?: 1 }, { it.episodeNumber ?: 0 }))
+            var successCount = 0
+            var failCount = 0
+            
+            for (episode in orderedEpisodes) {
+                try {
+                    val sources = repository.getVideoSources(
+                        episode.episodeId ?: 0,
+                        episode.animeId ?: _anime.value?.id,
+                        episode.seasonNumber,
+                        episode.episodeNumber
+                    )
+                    
+                    if (sources.isNotEmpty()) {
+                        val prioritized = sources.sortedByDescending {
+                            val u = it.url.lowercase()
+                            var score = 0
+                            when {
+                                u.contains("sibnet") || u.contains("ok.ru") || u.contains("odnoklassniki") -> score = 10
+                                u.contains("tau") || u.contains("tau-video") -> score = 8
+                                u.contains("dood") || u.contains("streamtape") || u.contains("voe") -> score = 5
+                                u.contains(".mp4") -> score = 3
+                                u.contains(".m3u8") -> score = 2
+                            }
+                            score
+                        }
+                        
+                        var resolvedUrl: String? = null
+                        var chosenRawUrl: String? = null
+                        
+                        for (source in prioritized) {
+                            val rawUrl = source.url
+                            if (rawUrl.isBlank()) continue
+                            
+                            val resolved = resolveUrl(rawUrl)
+                            if (resolved != null && resolved.startsWith("http")) {
+                                resolvedUrl = resolved
+                                chosenRawUrl = rawUrl
+                                break
+                            }
+                        }
+                        
+                        if (resolvedUrl != null && chosenRawUrl != null) {
+                            val lowerRawUrl = chosenRawUrl.lowercase()
+                            val urlToDownload = if (
+                                lowerRawUrl.contains("sibnet") || 
+                                lowerRawUrl.contains("ok.ru") || 
+                                lowerRawUrl.contains("odnoklassniki") || 
+                                lowerRawUrl.contains("streamtape") || 
+                                lowerRawUrl.contains("voe") || 
+                                lowerRawUrl.contains("uqload") || 
+                                lowerRawUrl.contains("dood")
+                            ) {
+                                chosenRawUrl
+                            } else {
+                                resolvedUrl
+                            }
+                            
+                            val formattedTitle = "$animeName - Sezon ${episode.seasonNumber ?: 1} Bölüm ${episode.episodeNumber ?: 0}"
+                            com.myanim.kondi.util.HdwpDownloaderHelper.sendDownloadRequest(
+                                context = context, 
+                                videoUrl = urlToDownload,
+                                title = formattedTitle
+                            )
+                            successCount++
+                            kotlinx.coroutines.delay(1000L)
+                        } else {
+                            failCount++
+                        }
+                    } else {
+                        failCount++
+                    }
+                } catch (e: Exception) {
+                    failCount++
+                    Timber.e(e, "Error sending bulk HDWP download for episode ${episode.episodeNumber}")
+                }
+            }
+            
+            withContext(Dispatchers.Main) {
+                if (successCount > 0) {
+                    Toast.makeText(context, "$successCount bölüm başarıyla VDS/WhatsApp kuyruğuna eklendi! (Başarısız: $failCount)", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(context, "Hiçbir bölüm VDS/WhatsApp kuyruğuna eklenemedi.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
     fun downloadEpisode(episode: AnimecixVideo, animeName: String, context: Context) {
-        init(context)
         viewModelScope.launch {
             downloadEpisodeSuspend(episode, animeName, context)
         }
     }
 
     private suspend fun downloadEpisodeSuspend(episode: AnimecixVideo, animeName: String, context: Context) {
-        val mgr = downloadManager ?: return
         val currentAnime = _anime.value
         val epTitle = com.myanim.kondi.data.download.DownloadUtils.createAnimecixFileName(
             animeName,
@@ -186,7 +274,7 @@ class AnimecixDetailViewModel : ViewModel() {
         
         try {
             // Check if already downloaded
-            val existing = mgr.downloadsFlow.value.find { it.title == epTitle }
+            val existing = downloadManager.downloadsFlow.value.find { it.title == epTitle }
             if (existing != null && existing.status == com.myanim.kondi.data.local.DownloadStatus.COMPLETED.name) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "${episode.episodeNumber}. Bölüm zaten inmiş", Toast.LENGTH_SHORT).show()
@@ -197,7 +285,7 @@ class AnimecixDetailViewModel : ViewModel() {
             // Instead of resolving the actual source now, we queue a lazy resolution URL
             val lazyUrl = "animecix://resolve?episodeId=${episode.episodeId}&animeId=${currentAnime?.id}&season=${episode.seasonNumber}&episode=${episode.episodeNumber}"
             
-            mgr.startDownload(
+            downloadManager.startDownload(
                 title = epTitle,
                 url = lazyUrl,
                 source = "ANIMECIX",
@@ -222,7 +310,6 @@ class AnimecixDetailViewModel : ViewModel() {
         context: Context,
         index: Int
     ): Boolean {
-        val mgr = downloadManager ?: return false
         val currentAnime = _anime.value
         val epTitle = com.myanim.kondi.data.download.DownloadUtils.createAnimecixFileName(
             animeName,
@@ -232,7 +319,7 @@ class AnimecixDetailViewModel : ViewModel() {
         
         try {
             // Check if already downloaded
-            val existing = mgr.downloadsFlow.value.find { it.title == epTitle }
+            val existing = downloadManager.downloadsFlow.value.find { it.title == epTitle }
             if (existing != null && existing.status == com.myanim.kondi.data.local.DownloadStatus.COMPLETED.name) {
                 return false
             }
@@ -287,7 +374,7 @@ class AnimecixDetailViewModel : ViewModel() {
                             kotlinx.coroutines.delay(2000L) // Stagger resolved direct start requests
                         }
                         
-                        mgr.startDownload(
+                        downloadManager.startDownload(
                             title = epTitle,
                             url = urlToDownload,
                             source = "ANIMECIX",
@@ -311,7 +398,6 @@ class AnimecixDetailViewModel : ViewModel() {
             return
         }
         
-        init(context)
         Toast.makeText(context, "${seasonEpisodes.size} bölüm çözümlenip kuyruğa ekleniyor...", Toast.LENGTH_SHORT).show()
         
         viewModelScope.launch {
@@ -328,7 +414,6 @@ class AnimecixDetailViewModel : ViewModel() {
     
     fun downloadAll(episodes: List<AnimecixVideo>, animeName: String, context: Context) {
         if (episodes.isEmpty()) return
-        init(context)
         Toast.makeText(context, "Tüm bölümler (${episodes.size}) çözümlenip kuyruğa ekleniyor...", Toast.LENGTH_SHORT).show()
         
         viewModelScope.launch {

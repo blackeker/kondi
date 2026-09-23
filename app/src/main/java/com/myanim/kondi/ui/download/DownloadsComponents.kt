@@ -33,6 +33,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import android.widget.Toast
 
+import com.myanim.kondi.ui.theme.*
+
 data class DownloadStats(
     val total: Int,
     val completed: Int,
@@ -80,20 +82,21 @@ fun StatsCard(stats: DownloadStats) {
     GlassyBox(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         shape = RoundedCornerShape(24.dp),
-        containerColor = Color.White.copy(alpha = 0.1f),
+        containerColor = GlassSurface,
         blurRadius = 12.dp,
         borderWidth = 1.dp,
-        borderColor = Color.White.copy(alpha = 0.2f)
+        borderColor = GlassBorder
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            StatItem(icon = Icons.Default.CheckCircle, value = stats.completed.toString(), label = "Tamamlandı", color = MaterialTheme.colorScheme.primary)
-            VerticalDivider(modifier = Modifier.height(48.dp))
-            StatItem(icon = Icons.Default.Download, value = stats.downloading.toString(), label = "İndiriliyor", color = MaterialTheme.colorScheme.tertiary)
-            VerticalDivider(modifier = Modifier.height(48.dp))
-            StatItem(icon = Icons.Default.Storage, value = formatBytes(stats.totalSize), label = "Toplam", color = MaterialTheme.colorScheme.secondary)
+            StatItem(icon = Icons.Default.CheckCircle, value = stats.completed.toString(), label = "Tamamlandı", color = EmeraldActive)
+            VerticalDivider(modifier = Modifier.height(40.dp), color = GlassBorderSubtle)
+            StatItem(icon = Icons.Default.Download, value = stats.downloading.toString(), label = "İndiriliyor", color = NeonCyan)
+            VerticalDivider(modifier = Modifier.height(40.dp), color = GlassBorderSubtle)
+            StatItem(icon = Icons.Default.Storage, value = formatBytes(stats.totalSize), label = "Toplam", color = ElectricPink)
         }
     }
 }
@@ -103,7 +106,7 @@ fun StatItem(icon: ImageVector, value: String, label: String, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
         Text(text = value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
-        Text(text = label, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.6f))
+        Text(text = label, style = MaterialTheme.typography.bodySmall, color = TextMed)
     }
 }
 
@@ -115,23 +118,25 @@ fun FilterSortBottomSheet(
     onSortChange: (DownloadSort) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
-        Text("Filtrele ve Sırala", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp))
-        HorizontalDivider()
-        Text("FİLTRE", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+        Text("Filtrele ve Sırala", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp), color = Color.White)
+        HorizontalDivider(color = GlassBorderSubtle)
+        Text("FİLTRE", style = MaterialTheme.typography.labelMedium, color = NeonCyan, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
         DownloadFilter.entries.forEach { filter ->
             ListItem(
-                headlineContent = { Text(when (filter) { DownloadFilter.ALL -> "Tümü"; DownloadFilter.COMPLETED -> "Tamamlananlar"; DownloadFilter.DOWNLOADING -> "İndirilenler"; DownloadFilter.FAILED -> "Başarısız" }) },
+                headlineContent = { Text(when (filter) { DownloadFilter.ALL -> "Tümü"; DownloadFilter.COMPLETED -> "Tamamlananlar"; DownloadFilter.DOWNLOADING -> "İndirilenler"; DownloadFilter.FAILED -> "Başarısız" }, color = Color.White) },
                 leadingContent = { RadioButton(selected = selectedFilter == filter, onClick = { onFilterChange(filter) }) },
-                modifier = Modifier.clickable { onFilterChange(filter) }
+                modifier = Modifier.clickable { onFilterChange(filter) },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
             )
         }
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-        Text("SIRALAMA", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = GlassBorderSubtle)
+        Text("SIRALAMA", style = MaterialTheme.typography.labelMedium, color = NeonCyan, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
         DownloadSort.entries.forEach { sort ->
             ListItem(
-                headlineContent = { Text(when (sort) { DownloadSort.DATE_DESC -> "Tarihe Göre (Yeni → Eski)"; DownloadSort.DATE_ASC -> "Tarihe Göre (Eski → Yeni)"; DownloadSort.NAME_ASC -> "İsme Göre (A → Z)"; DownloadSort.NAME_DESC -> "İsme Göre (Z → A)"; DownloadSort.SIZE_DESC -> "Boyuta Göre (Büyük → Küçük)" }) },
+                headlineContent = { Text(when (sort) { DownloadSort.DATE_DESC -> "Tarihe Göre (Yeni → Eski)"; DownloadSort.DATE_ASC -> "Tarihe Göre (Eski → Yeni)"; DownloadSort.NAME_ASC -> "İsme Göre (A → Z)"; DownloadSort.NAME_DESC -> "İsme Göre (Z → A)"; DownloadSort.SIZE_DESC -> "Boyuta Göre (Büyük → Küçük)" }, color = Color.White) },
                 leadingContent = { RadioButton(selected = selectedSort == sort, onClick = { onSortChange(sort) }) },
-                modifier = Modifier.clickable { onSortChange(sort) }
+                modifier = Modifier.clickable { onSortChange(sort) },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
             )
         }
     }
@@ -141,9 +146,17 @@ fun FilterSortBottomSheet(
 fun EmptyDownloadsState() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(32.dp)) {
-            Icon(Icons.Default.DownloadDone, null, modifier = Modifier.size(80.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
-            Text("Henüz indirme yok", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("İçerik indirdiğinizde burada görünecek", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(GlassSurface),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.DownloadDone, null, modifier = Modifier.size(40.dp), tint = NeonCyan.copy(alpha = 0.8f))
+            }
+            Text("Henüz indirme yok", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("İçerik indirdiğinizde burada görünecek", style = MaterialTheme.typography.bodyMedium, color = TextMed)
         }
     }
 }
@@ -152,8 +165,8 @@ fun EmptyDownloadsState() {
 fun EmptyFilterState(filter: DownloadFilter) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(32.dp)) {
-            Icon(Icons.Default.FilterList, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(when (filter) { DownloadFilter.COMPLETED -> "Tamamlanmış indirme yok"; DownloadFilter.DOWNLOADING -> "Devam eden indirme yok"; DownloadFilter.FAILED -> "Başarısız indirme yok"; else -> "Sonuç bulunamadı" }, style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Icon(Icons.Default.FilterList, null, modifier = Modifier.size(54.dp), tint = TextLow)
+            Text(when (filter) { DownloadFilter.COMPLETED -> "Tamamlanmış indirme yok"; DownloadFilter.DOWNLOADING -> "Devam eden indirme yok"; DownloadFilter.FAILED -> "Başarısız indirme yok"; else -> "Sonuç bulunamadı" }, style = MaterialTheme.typography.titleMedium, color = TextMed)
         }
     }
 }
@@ -175,29 +188,44 @@ fun ImprovedDownloadItem(
     var expanded by remember { mutableStateOf(false) }
     GlassyBox(
         modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(20.dp),
+        containerColor = GlassSurface,
         blurRadius = 12.dp,
         borderWidth = 1.dp,
-        borderColor = Color.White.copy(alpha = 0.25f)
+        borderColor = GlassBorder
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f)) {
                     val parsed = remember(download.title) { parseDownloadTitle(download.title) }
                     Text(text = parsed.animeName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = if (expanded) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis)
                     if (parsed.subtitle.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = parsed.subtitle, style = MaterialTheme.typography.bodyMedium, color = Color.Cyan, fontWeight = FontWeight.SemiBold)
+                        Text(text = parsed.subtitle, style = MaterialTheme.typography.bodyMedium, color = NeonCyan, fontWeight = FontWeight.SemiBold)
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     StatusChip(status = download.status)
                 }
-                Box(modifier = Modifier.size(48.dp).clip(CircleShape).background(when (download.status) { DownloadStatus.COMPLETED.name -> MaterialTheme.colorScheme.primaryContainer; DownloadStatus.DOWNLOADING.name -> MaterialTheme.colorScheme.tertiaryContainer; DownloadStatus.FAILED.name -> MaterialTheme.colorScheme.errorContainer; else -> MaterialTheme.colorScheme.surfaceVariant }), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when (download.status) {
+                                DownloadStatus.COMPLETED.name -> EmeraldActive.copy(alpha = 0.15f)
+                                DownloadStatus.DOWNLOADING.name -> NeonCyan.copy(alpha = 0.15f)
+                                DownloadStatus.FAILED.name -> Color(0xFFFF5252).copy(alpha = 0.15f)
+                                DownloadStatus.PAUSED.name -> AmberRating.copy(alpha = 0.15f)
+                                else -> Color.White.copy(alpha = 0.08f)
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
                     when (download.status) {
-                        DownloadStatus.COMPLETED.name -> Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50))
-                        DownloadStatus.DOWNLOADING.name -> CircularProgressIndicator(progress = { download.progress / 100f }, modifier = Modifier.size(24.dp), strokeWidth = 3.dp, color = Color.White)
-                        DownloadStatus.FAILED.name -> Icon(Icons.Default.Error, null, tint = Color.White)
-                        DownloadStatus.PAUSED.name -> Icon(Icons.Default.Pause, null, tint = Color.White.copy(alpha = 0.6f))
+                        DownloadStatus.COMPLETED.name -> Icon(Icons.Default.CheckCircle, null, tint = EmeraldActive, modifier = Modifier.size(22.dp))
+                        DownloadStatus.DOWNLOADING.name -> CircularProgressIndicator(progress = { download.progress / 100f }, modifier = Modifier.size(24.dp), strokeWidth = 3.dp, color = NeonCyan)
+                        DownloadStatus.FAILED.name -> Icon(Icons.Default.Error, null, tint = Color(0xFFFF5252), modifier = Modifier.size(22.dp))
+                        DownloadStatus.PAUSED.name -> Icon(Icons.Default.Pause, null, tint = AmberRating, modifier = Modifier.size(22.dp))
                         DownloadStatus.PENDING.name -> Box(contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 3.dp, color = Color.White.copy(alpha = 0.5f))
                             if (queuePosition > 0) Text(text = queuePosition.toString(), style = MaterialTheme.typography.labelSmall, color = Color.White, fontWeight = FontWeight.Bold)
@@ -208,11 +236,11 @@ fun ImprovedDownloadItem(
             Spacer(modifier = Modifier.height(12.dp))
             when (download.status) {
                 DownloadStatus.DOWNLOADING.name, DownloadStatus.PAUSED.name -> {
-                    LinearProgressIndicator(progress = { download.progress / 100f }, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)), color = Color.Cyan, trackColor = Color.White.copy(alpha = 0.1f))
+                    LinearProgressIndicator(progress = { download.progress / 100f }, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)), color = NeonCyan, trackColor = Color.White.copy(alpha = 0.1f))
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(text = "${download.progress}%", style = MaterialTheme.typography.labelMedium, color = Color.Cyan, fontWeight = FontWeight.Bold)
-                        Text(text = "${formatBytes(download.downloadedBytes)} / ${formatBytes(download.totalBytes)}", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+                        Text(text = "${download.progress}%", style = MaterialTheme.typography.labelMedium, color = NeonCyan, fontWeight = FontWeight.Bold)
+                        Text(text = "${formatBytes(download.downloadedBytes)} / ${formatBytes(download.totalBytes)}", style = MaterialTheme.typography.labelMedium, color = TextMed)
                     }
                 }
                 DownloadStatus.COMPLETED.name -> Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -220,36 +248,43 @@ fun ImprovedDownloadItem(
                     InfoChip(icon = Icons.Default.VideoLibrary, text = "Video")
                 }
                 DownloadStatus.FAILED.name -> download.errorMessage?.let {
-                    Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)) {
-                        Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(8.dp))
+                    Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFFF5252).copy(alpha = 0.15f), border = BorderStroke(0.5.dp, Color(0xFFFF5252).copy(alpha = 0.4f))) {
+                        Text(text = it, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.9f), modifier = Modifier.padding(8.dp))
                     }
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                val filledColors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = Color.White.copy(alpha = 0.15f),
+                    contentColor = Color.White
+                )
+                val outlinedColors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color.White.copy(alpha = 0.8f)
+                )
                 when (download.status) {
                     DownloadStatus.COMPLETED.name -> {
-                        FilledTonalButton(onClick = { onOpen(download) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp)); Text("Oynat") }
-                        OutlinedButton(onClick = { onDelete(download) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp)); Text("Sil") }
+                        FilledTonalButton(onClick = { onOpen(download) }, modifier = Modifier.weight(1f), colors = filledColors) { Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Oynat") }
+                        OutlinedButton(onClick = { onDelete(download) }, modifier = Modifier.weight(1f), colors = outlinedColors) { Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Sil") }
                     }
                     DownloadStatus.DOWNLOADING.name -> {
-                        FilledTonalButton(onClick = { onPause(download) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Pause, null, modifier = Modifier.size(18.dp)); Text("Duraklat") }
-                        OutlinedButton(onClick = { onCancel(download) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Icon(Icons.Default.Close, null, modifier = Modifier.size(18.dp)); Text("İptal") }
+                        FilledTonalButton(onClick = { onPause(download) }, modifier = Modifier.weight(1f), colors = filledColors) { Icon(Icons.Default.Pause, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Duraklat") }
+                        OutlinedButton(onClick = { onCancel(download) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5252))) { Icon(Icons.Default.Close, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("İptal") }
                     }
                     DownloadStatus.PENDING.name -> {
-                        FilledTonalButton(onClick = { onMoveUp(download) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.KeyboardArrowUp, null, modifier = Modifier.size(18.dp)); Text("Öne Al") }
-                        OutlinedButton(onClick = { onCancel(download) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Close, null, modifier = Modifier.size(18.dp)); Text("İptal") }
+                        FilledTonalButton(onClick = { onMoveUp(download) }, modifier = Modifier.weight(1f), colors = filledColors) { Icon(Icons.Default.KeyboardArrowUp, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Öne Al") }
+                        OutlinedButton(onClick = { onCancel(download) }, modifier = Modifier.weight(1f), colors = outlinedColors) { Icon(Icons.Default.Close, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("İptal") }
                     }
                     DownloadStatus.PAUSED.name -> {
-                        FilledTonalButton(onClick = { onResume(download) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp)); Text("Devam") }
-                        OutlinedButton(onClick = { onCancel(download) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Close, null, modifier = Modifier.size(18.dp)); Text("İptal") }
+                        FilledTonalButton(onClick = { onResume(download) }, modifier = Modifier.weight(1f), colors = filledColors) { Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Devam") }
+                        OutlinedButton(onClick = { onCancel(download) }, modifier = Modifier.weight(1f), colors = outlinedColors) { Icon(Icons.Default.Close, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("İptal") }
                     }
                     DownloadStatus.FAILED.name -> {
-                        FilledTonalButton(onClick = { onRetry(download) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp)); Text("Tekrar") }
+                        FilledTonalButton(onClick = { onRetry(download) }, modifier = Modifier.weight(1f), colors = filledColors) { Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Tekrar") }
                         if (download.errorMessage != null && onShowError != null) {
-                            OutlinedButton(onClick = { onShowError(download) }, modifier = Modifier.weight(1.2f)) { Icon(Icons.Default.Info, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Detay") }
+                            OutlinedButton(onClick = { onShowError(download) }, modifier = Modifier.weight(1.2f), colors = outlinedColors) { Icon(Icons.Default.Info, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Detay") }
                         }
-                        OutlinedButton(onClick = { onDelete(download) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp)); Text("Sil") }
+                        OutlinedButton(onClick = { onDelete(download) }, modifier = Modifier.weight(1f), colors = outlinedColors) { Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Sil") }
                     }
                 }
             }
@@ -260,14 +295,14 @@ fun ImprovedDownloadItem(
 @Composable
 fun StatusChip(status: String) {
     val (label, color) = when (status) {
-        DownloadStatus.COMPLETED.name -> "Tamamlandı" to Color(0xFF4CAF50)
-        DownloadStatus.DOWNLOADING.name -> "İndiriliyor" to Color(0xFF2196F3)
-        DownloadStatus.PAUSED.name -> "Duraklatıldı" to Color(0xFFFF9800)
-        DownloadStatus.PENDING.name -> "Bekliyor" to Color(0xFF9E9E9E)
-        DownloadStatus.FAILED.name -> "Hata" to Color(0xFFF44336)
+        DownloadStatus.COMPLETED.name -> "Tamamlandı" to EmeraldActive
+        DownloadStatus.DOWNLOADING.name -> "İndiriliyor" to NeonCyan
+        DownloadStatus.PAUSED.name -> "Duraklatıldı" to AmberRating
+        DownloadStatus.PENDING.name -> "Bekliyor" to TextMed
+        DownloadStatus.FAILED.name -> "Hata" to Color(0xFFFF5252)
         else -> status to Color.Gray
     }
-    Surface(shape = RoundedCornerShape(8.dp), color = color.copy(alpha = 0.2f), border = BorderStroke(0.5.dp, color.copy(alpha = 0.5f))) {
+    Surface(shape = RoundedCornerShape(8.dp), color = color.copy(alpha = 0.15f), border = BorderStroke(0.5.dp, color.copy(alpha = 0.4f))) {
         Text(text = label, style = MaterialTheme.typography.labelSmall, color = color, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), fontWeight = FontWeight.Bold)
     }
 }
@@ -370,7 +405,7 @@ fun EpisodeListItem(
                     Text(
                         text = formatBytes(download.totalBytes),
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.5f)
+                        color = TextMed
                     )
                     Box(
                         modifier = Modifier
@@ -381,7 +416,7 @@ fun EpisodeListItem(
                     Text(
                         text = "Video",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.5f)
+                        color = TextMed
                     )
                 }
             }
@@ -399,7 +434,7 @@ fun EpisodeListItem(
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
                         contentDescription = "Oynat",
-                        tint = Color.Cyan,
+                        tint = NeonCyan,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -436,10 +471,11 @@ fun AnimeGroupCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { expanded = !expanded },
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(20.dp),
+        containerColor = GlassSurface,
         blurRadius = 12.dp,
         borderWidth = 1.dp,
-        borderColor = Color.White.copy(alpha = 0.25f)
+        borderColor = GlassBorder
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -449,7 +485,7 @@ fun AnimeGroupCard(
                 // Cover art image
                 Box(
                     modifier = Modifier
-                        .size(height = 90.dp, width = 64.dp)
+                        .size(height = 80.dp, width = 58.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.White.copy(alpha = 0.05f))
                 ) {
@@ -491,7 +527,7 @@ fun AnimeGroupCard(
                     Text(
                         text = "${episodes.size} Bölüm",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.6f)
+                        color = TextMed
                     )
                 }
                 
@@ -511,7 +547,7 @@ fun AnimeGroupCard(
                     episodes.forEachIndexed { index, download ->
                         if (index > 0) {
                             HorizontalDivider(
-                                color = Color.White.copy(alpha = 0.08f),
+                                color = GlassBorderSubtle,
                                 thickness = 1.dp,
                                 modifier = Modifier.padding(horizontal = 4.dp)
                             )

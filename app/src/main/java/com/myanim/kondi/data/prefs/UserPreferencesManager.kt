@@ -24,7 +24,7 @@ class UserPreferencesManager private constructor(context: Context) {
         }
 
     var downloadThreads: Int
-        get() = 4
+        get() = prefs.getInt("download_threads", 4)
         set(value) {
             prefs.edit().putInt("download_threads", value).apply()
         }
@@ -33,6 +33,18 @@ class UserPreferencesManager private constructor(context: Context) {
         get() = prefs.getBoolean("enable_multi_chunk", true)
         set(value) {
             prefs.edit().putBoolean("enable_multi_chunk", value).apply()
+        }
+        
+    var hdwpServerIp: String
+        get() = prefs.getString("hdwp_server_ip", "http://localhost:7860") ?: "http://localhost:7860"
+        set(value) {
+            prefs.edit().putString("hdwp_server_ip", value).apply()
+        }
+
+    var hdwpTargetPhone: String
+        get() = prefs.getString("hdwp_target_phone", "") ?: ""
+        set(value) {
+            prefs.edit().putString("hdwp_target_phone", value).apply()
         }
         
     fun extractHostAndSave(url: String) {
