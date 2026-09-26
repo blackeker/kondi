@@ -122,8 +122,10 @@ class AnimecixScraper {
                     Timber.w(e, "Failed to fetch Animecix domain from $url")
                 }
             }
-            if (!success && !domainFetched) {
-                throw lastException ?: java.io.IOException("Could not resolve Animecix domain list")
+            if (!domainFetched) {
+                baseUrl = "https://animecix.tv"
+                domainFetched = true
+                Timber.d("Fallback to default domain: $baseUrl")
             }
         }
     }
@@ -240,43 +242,40 @@ class AnimecixScraper {
             if (jsonTrimmed.startsWith("{")) {
                 val responseObj = JSONObject(jsonTrimmed)
                 
-                // 1. Try to find "data" array or object
-                val dataVal = responseObj.opt("data")
-                if (dataVal is JSONArray) {
-                    return gson.fromJson(dataVal.toString(), type)
-                } else if (dataVal is JSONObject) {
-                    // Check if it's a paginated object with nested "data" array
-                    val nestedData = dataVal.optJSONArray("data")
-                    if (nestedData != null) {
-                        return gson.fromJson(nestedData.toString(), type)
+                // Try known direct & nested array locations
+                val arrayCandidates = listOf(
+                    responseObj.optJSONArray("videos"),
+                    responseObj.optJSONArray("data"),
+                    responseObj.optJSONArray("results"),
+                    responseObj.optJSONArray("titles"),
+                    responseObj.optJSONObject("pagination")?.optJSONArray("videos"),
+                    responseObj.optJSONObject("pagination")?.optJSONArray("data"),
+                    responseObj.optJSONObject("outputs")?.optJSONArray("videos"),
+                    responseObj.optJSONObject("outputs")?.optJSONArray("data"),
+                    responseObj.optJSONObject("data")?.optJSONArray("data"),
+                    responseObj.optJSONObject("data")?.optJSONArray("videos")
+                )
+
+                for (arr in arrayCandidates) {
+                    if (arr != null && arr.length() > 0) {
+                        return gson.fromJson(arr.toString(), type)
                     }
                 }
 
-                // 1b. Check "pagination" object specifically
-                val paginationVal = responseObj.optJSONObject("pagination")
-                if (paginationVal != null) {
-                    val pData = paginationVal.optJSONArray("data")
-                    if (pData != null) {
-                        return gson.fromJson(pData.toString(), type)
+                // Generic fallback: check any root or nested object key containing a non-empty JSONArray
+                for (key in responseObj.keys()) {
+                    val valObj = responseObj.opt(key)
+                    if (valObj is JSONArray && valObj.length() > 0) {
+                        return gson.fromJson(valObj.toString(), type)
+                    } else if (valObj is JSONObject) {
+                        for (subKey in valObj.keys()) {
+                            val subVal = valObj.opt(subKey)
+                            if (subVal is JSONArray && subVal.length() > 0) {
+                                return gson.fromJson(subVal.toString(), type)
+                            }
+                        }
                     }
                 }
-
-                // 1c. Search endpoint returns "results" array (örnek/Search.java: @JsonProperty("results"))
-                val resultsArray = responseObj.optJSONArray("results")
-                if (resultsArray != null) {
-                    return gson.fromJson(resultsArray.toString(), type)
-                }
-
-                // 1d. Some endpoints return "titles" array
-                val titlesArray = responseObj.optJSONArray("titles")
-                if (titlesArray != null) {
-                    return gson.fromJson(titlesArray.toString(), type)
-                }
-                
-                // 2. Greedy fallback DISABLED - it picks up wrong arrays like 'featured'
-                // Log all keys to help diagnose
-                val allKeys = responseObj.keys().asSequence().toList()
-                Timber.w("parseList: No known array key found. All keys: $allKeys")
 
                 if (responseObj.has("title")) {
                     val titleObj = responseObj.optJSONObject("title")
