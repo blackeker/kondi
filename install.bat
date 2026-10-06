@@ -1,16 +1,13 @@
 @echo off
 setlocal EnableDelayedExpansion
 color 0A
-title Kondi İnstaller Bater
+title Kondi Installer Bater
 set "PACKAGE_NAME=com.myanim.kondi"
 if not exist "logs" mkdir logs
 
-:: Saati formatla (HHMM)
 set "t=%time: =0%"
 set "mytime=%t:~0,2%%t:~3,2%"
-:: Tarihi formatla (YYYYMMDD) - Paz 08.03.2026 formatina gore
 set "datestr=%date:~10,4%%date:~7,2%%date:~4,2%"
-
 set "BUILD_LOG=logs\buildlog_%datestr%_%mytime%.txt"
 
 :Main
@@ -19,7 +16,6 @@ echo  [SYSTEM] Bagli cihazlar taraniyor...
 adb start-server >nul 2>&1
 set count=0
 
-:: Cihaz tarama döngüsü
 for /f "skip=1 tokens=1" %%d in ('adb devices') do (
     set "temp_device=%%d"
     if not "!temp_device!"=="" (
@@ -28,21 +24,27 @@ for /f "skip=1 tokens=1" %%d in ('adb devices') do (
     )
 )
 
-:: CIHAZ YOKSA
-if %count%==0 (
-    color 0E
-    echo.
-    echo  [UYARI] Bagli cihaz bulunamadi!
-    echo  ---------------------------------------------------------------
-    echo  Otomatik APK Build moduna geciliyor...
-    timeout /t 3 /nobreak >nul
-    color 0A
-    set "BUILD_MODE=APK-Only (Cihaz Yok)"
-    set "SELECTED_DEVICE=YOK"
-    goto :BuildOnly
-)
+if %count% GTR 0 goto :DeviceFound
 
-:: CIHAZ VARSA SECIM
+color 0E
+echo.
+echo  [UYARI] Bagli cihaz bulunamadi!
+echo  ---------------------------------------------------------------
+echo   1. Wi-Fi - Kablosuz ADB ile Baglan
+echo   2. Karekod - QR Code ile Eslestir
+echo   3. Otomatik APK Derle - Cihaz Yok
+echo   4. Yeniden Cihaz Tara
+echo.
+set /p "nodev_ans= Seciminiz [1-4]: "
+color 0A
+if "%nodev_ans%"=="1" goto :WifiConnect
+if "%nodev_ans%"=="2" goto :WifiQr
+if "%nodev_ans%"=="4" goto :Main
+set "BUILD_MODE=APK-Only (Cihaz Yok)"
+set "SELECTED_DEVICE=YOK"
+goto :BuildOnly
+
+:DeviceFound
 if %count%==1 (
     set "SELECTED_DEVICE=!dev[1]!"
 ) else (
@@ -64,28 +66,30 @@ echo  ==================================================================
 echo   HEDEF CIHAZ: !SELECTED_DEVICE!
 echo  ==================================================================
 echo.
-echo   1. Hizli Guncelle   (Veriler Korunur)
-echo   2. Temiz Kurulum    (Eski Silinir + Sifirdan Kurulur)
+echo   1. Hizli Guncelle   - Veriler Korunur
+echo   2. Temiz Kurulum    - Eski Silinir + Sifirdan Kurulur
 echo   3. Sadece APK Olustur
 echo   4. Uygulamayi Kaldir
-echo   5. LOGCAT           (Filtreli + Canli Izleme)
-echo   6. Log Klasorunu Ac
-echo   7. Cikis
+echo   5. LOGCAT           - Filtreli + Canli Izleme
+echo   6. Wi-Fi Kablosuz ADB Baglantisi
+echo   7. Yeniden Cihaz Tara
+echo   8. Log Klasorunu Ac
+echo   9. Cikis
 echo.
 echo   [Build Log: %BUILD_LOG%]
 echo  ==================================================================
-set /p "ans= Seciminiz [1-7]: "
+set /p "ans= Seciminiz [1-9]: "
 
 if "%ans%"=="1" goto :UpdateInstall
 if "%ans%"=="2" goto :CleanInstall
 if "%ans%"=="3" (set "BUILD_MODE=Sadece APK" & goto :BuildOnly)
 if "%ans%"=="4" goto :UninstallOnly
 if "%ans%"=="5" goto :Logcat
-if "%ans%"=="6" (start "" "logs" & goto :Menu)
-if "%ans%"=="7" exit
+if "%ans%"=="6" goto :WifiConnect
+if "%ans%"=="7" goto :Main
+if "%ans%"=="8" (start "" "logs" & goto :Menu)
+if "%ans%"=="9" exit
 goto :Menu
-
-:: --- ISLEMLER ---
 
 :BuildOnly
 cls
@@ -203,3 +207,82 @@ echo  [OK] Basarili! Uygulama aciliyor...
 %ADB_CMD% shell monkey -p %PACKAGE_NAME% -c android.intent.category.LAUNCHER 1 >nul 2>&1
 timeout /t 2 /nobreak >nul
 goto :Logcat
+
+:WifiConnect
+cls
+echo.
+echo  ==================================================================
+echo   ADB WI-FI KABLOSUZ HATA AYIKLAMA BAGLANTISI
+echo  ==================================================================
+echo.
+echo   1. Karekod (QR Code) ile Eslestir
+echo   2. Manuel IP ve Port ile Baglan (connect)
+echo   3. 6 Haneli Kod ile Eslestir (pair)
+echo   4. USB uzerinden Wi-Fi Modunu Ac (adb tcpip 5555)
+echo   5. Ana Menuye Don
+echo.
+echo  ==================================================================
+set /p "wifichoice= Seciminiz [1-5]: "
+
+if "%wifichoice%"=="1" goto :WifiQr
+if "%wifichoice%"=="2" goto :WifiConnectIp
+if "%wifichoice%"=="3" goto :WifiPair
+if "%wifichoice%"=="4" goto :WifiTcpip
+if "%wifichoice%"=="5" goto :Main
+goto :WifiConnect
+
+:WifiQr
+cls
+echo.
+echo  ==================================================================
+echo   ADB KAREKOD (QR CODE) ILE ESLESTIRME
+echo  ==================================================================
+echo.
+echo  [SYSTEM] Karekod olusturuluyor...
+
+set /a PAIR_CODE=%RANDOM% * 899999 / 32767 + 100000
+powershell -ExecutionPolicy Bypass -File "scripts\generate_qr.ps1" -code "%PAIR_CODE%"
+
+echo  [OK] Karekod tarayicida acildi!
+echo.
+echo  1. Telefonda Ayarlar - Gelistirici Secenekleri - Kablosuz Hata Ayiklama ya gidin.
+echo  2. "Karekod simgesiyle cihaz esle" secenegine basip tarayicidaki kodu taratin.
+echo.
+echo  [SYSTEM] Cihaz baglantisi bekleniyor...
+echo  ---------------------------------------------------------------
+pause
+goto :Main
+
+:WifiConnectIp
+echo.
+set /p "target_ip= Cihaz IP ve Port Girin (Orn: 192.168.1.50:5555 veya 192.168.1.50:38475): "
+if "!target_ip!"=="" goto :WifiConnect
+echo.
+echo  [SYSTEM] !target_ip! adresine baglaniliyor...
+adb connect !target_ip!
+echo.
+pause
+goto :Main
+
+:WifiPair
+echo.
+set /p "pair_ip= Eslestirme IP ve Port Girin (Orn: 192.168.1.50:41235): "
+if "!pair_ip!"=="" goto :WifiConnect
+set /p "pair_code= 6 Haneli Eslestirme Kodunu Girin: "
+if "!pair_code!"=="" goto :WifiConnect
+echo.
+echo  [SYSTEM] Eslestiriliyor...
+adb pair !pair_ip! !pair_code!
+echo.
+echo  Simdi baglanti portu ile baglanabilirsiniz.
+pause
+goto :WifiConnect
+
+:WifiTcpip
+echo.
+echo  [SYSTEM] USB ile bagli cihaza TCP/IP modu komutu gonderiliyor...
+adb tcpip 5555
+echo.
+echo  [OK] Cihaz 5555 portunda dinlemeye alindi. Simdi USB kablosunu cikarabilirsiniz!
+pause
+goto :WifiConnect

@@ -21,34 +21,80 @@ class AnimecixCheckWorker(appContext: Context, workerParams: WorkerParameters) :
     companion object {
         const val CHANNEL_ID = "animecix_updates"
         const val PREFS_NAME = "animecix_prefs"
+        const val KEY_NOTIFIED_EPISODES = "notified_episodes_set"
         const val KEY_LAST_EPISODE_URL = "last_episode_url"
     }
 
     override suspend fun doWork(): Result {
         return try {
             val repository = AnimecixRepository()
-            val episodes = repository.getLatestEpisodes()
+            val episodes = repository.getLatestEpisodes(page = 1)
+            if (episodes.isEmpty()) return Result.success()
+
+            val sharedPrefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val notifiedSet = sharedPrefs.getStringSet(KEY_NOTIFIED_EPISODES, emptySet())?.toMutableSet() ?: mutableSetOf()
             
-            if (episodes.isNotEmpty()) {
-                val latestEpisode = episodes.first()
-                val url = latestEpisode.url
-                val sharedPrefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                val lastUrl = sharedPrefs.getString(KEY_LAST_EPISODE_URL, "")
-                
-                if (url != null && url != lastUrl) {
-                    // New episode found!
-                    sendNotification(
-                        "Yeni Bölüm Geldi!",
-                        "${latestEpisode.name ?: "Bilinmeyen Anime"} yayınlandı.",
-                        url,
-                        latestEpisode.name ?: "Anime"
-                    )
+            val db = com.myanim.kondi.data.local.KondiDatabase.getDatabase(applicationContext)
+            val favorites = db.favoriteDao().getAllFavoritesSync()
+
+            var notifiedAny = false
+
+            if (favorites.isNotEmpty()) {
+                // Sadece kullanıcının takip ettiği (favorilere eklediği) animeler için kontrol yap
+                for (ep in episodes) {
+                    val epAnimeId = ep.animeId
+                    val epName = (ep.name ?: "").trim().lowercase()
                     
-                    // Save new last url
+                    val matchedFav = favorites.find { fav ->
+                        (epAnimeId != null && fav.animeId != null && epAnimeId == fav.animeId) ||
+                        (epName.isNotEmpty() && fav.title.trim().lowercase().contains(epName)) ||
+                        (epName.isNotEmpty() && epName.contains(fav.title.trim().lowercase()))
+                    }
+
+                    if (matchedFav != null) {
+                        val episodeKey = "${matchedFav.title}_s${ep.seasonNumber ?: 1}_e${ep.episodeNumber ?: 1}"
+                        if (!notifiedSet.contains(episodeKey)) {
+                            notifiedSet.add(episodeKey)
+                            notifiedAny = true
+
+                            val seasonText = if ((ep.seasonNumber ?: 1) > 1) "${ep.seasonNumber}. Sezon " else ""
+                            val episodeText = "${ep.episodeNumber ?: 1}. Bölüm"
+                            val notifTitle = "Takip Ettiğin Anime: ${matchedFav.title}"
+                            val notifMessage = "$seasonText$episodeText yayınlandı! İzlemek için tıkla."
+
+                            sendNotification(
+                                title = notifTitle,
+                                message = notifMessage,
+                                animeId = matchedFav.animeId ?: ep.animeId,
+                                url = ep.directUrl ?: ""
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Kullanıcının henüz favorisi yoksa en son çıkan 1 genel bölümü takip et
+                val latest = episodes.firstOrNull()
+                val url = latest?.directUrl ?: latest?.name ?: ""
+                val lastUrl = sharedPrefs.getString(KEY_LAST_EPISODE_URL, "")
+                if (url.isNotEmpty() && url != lastUrl) {
+                    sendNotification(
+                        title = "Yeni Bölüm Eklendi",
+                        message = "${latest?.name ?: "Yeni anime"} yayında!",
+                        animeId = latest?.animeId,
+                        url = latest?.directUrl ?: ""
+                    )
                     sharedPrefs.edit().putString(KEY_LAST_EPISODE_URL, url).apply()
                 }
             }
-            
+
+            // Temizlik: max 100 anahtar sakla
+            if (notifiedSet.size > 150) {
+                val trimmed = notifiedSet.toList().takeLast(100).toSet()
+                sharedPrefs.edit().putStringSet(KEY_NOTIFIED_EPISODES, trimmed).apply()
+            } else if (notifiedAny) {
+                sharedPrefs.edit().putStringSet(KEY_NOTIFIED_EPISODES, notifiedSet).apply()
+            }
+
             Result.success()
         } catch (e: Exception) {
             if (runAttemptCount < 3) {
@@ -59,7 +105,7 @@ class AnimecixCheckWorker(appContext: Context, workerParams: WorkerParameters) :
         }
     }
 
-    private fun sendNotification(title: String, message: String, url: String, animeTitle: String) {
+    private fun sendNotification(title: String, message: String, animeId: Int?, url: String) {
         val notificationManager =
             applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -75,23 +121,21 @@ class AnimecixCheckWorker(appContext: Context, workerParams: WorkerParameters) :
             notificationManager.createNotificationChannel(channel)
         }
 
-        // Create Intent
-        // We want to open Player directly
-        val encodedUrl = URLEncoder.encode(url, StandardCharsets.UTF_8.toString())
-        val encodedTitle = URLEncoder.encode(animeTitle, StandardCharsets.UTF_8.toString())
-        // But MainActivity handles routing. 
-        // We can pass data to MainActivity and handle it in onCreate/onNewIntent
-        // Or deep link?
-        // Let's launch MainActivity
+        // Create Intent to open MainActivity and navigate to the anime detail or player
         val intent = Intent(applicationContext, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            // We can put extra to signal navigation
-             putExtra("navigate_to", "player/$encodedUrl/$encodedTitle/ANIMECIX")
+            if (animeId != null) {
+                putExtra("navigate_to", "anime_detail/$animeId")
+            } else if (url.isNotEmpty()) {
+                val encodedUrl = URLEncoder.encode(url, StandardCharsets.UTF_8.toString())
+                val encodedTitle = URLEncoder.encode(title, StandardCharsets.UTF_8.toString())
+                putExtra("navigate_to", "player/$encodedUrl/$encodedTitle/ANIMECIX")
+            }
         }
 
         val pendingIntent = PendingIntent.getActivity(
             applicationContext,
-            0,
+            (animeId ?: System.currentTimeMillis().toInt()),
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )

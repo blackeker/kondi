@@ -217,41 +217,21 @@ fun DetailHeader(
             )
             Spacer(modifier = Modifier.height(20.dp))
             
-            // Side-by-side premium action buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                val hasTrailer = !details.trailerUrl.isNullOrBlank()
-                val btnWeight = if (hasTrailer) 0.5f else 1f
-                
-                if (hasTrailer) {
-                    Button(
-                        onClick = { onTrailerClick(details.trailerUrl, "Fragman - ${details.title}") },
-                        modifier = Modifier.weight(btnWeight).height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF2E93)),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Fragman", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                }
-                
+            // Action buttons
+            val hasTrailer = !details.trailerUrl.isNullOrBlank()
+            if (hasTrailer) {
                 Button(
-                    onClick = onMarkWatchedClick,
-                    modifier = Modifier.weight(1f - (if (hasTrailer) 0.5f else 0f)).height(50.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                    onClick = { onTrailerClick(details.trailerUrl, "Fragman - ${details.title}") },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF2E93)),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("İzledim İşaretle", color = Color.White, fontWeight = FontWeight.Bold)
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Fragmanı İzle", color = Color.White, fontWeight = FontWeight.Bold)
                 }
+                Spacer(modifier = Modifier.height(16.dp))
             }
-            
-            Spacer(modifier = Modifier.height(24.dp))
 
             if (!details.credits.isNullOrEmpty()) {
                 Text(
@@ -611,14 +591,14 @@ fun SourceSelectionBottomSheet(
                                 IconButton(
                                     onClick = { onHdwpClick(source) },
                                     colors = IconButtonDefaults.iconButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                        containerColor = Color(0xFF25D366).copy(alpha = 0.15f)
                                     ),
-                                    modifier = Modifier.border(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), CircleShape)
+                                    modifier = Modifier.border(0.5.dp, Color(0xFF25D366).copy(alpha = 0.4f), CircleShape)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.CloudUpload,
-                                        contentDescription = "WhatsApp ile İndir",
-                                        tint = MaterialTheme.colorScheme.primary,
+                                        contentDescription = "HDWP ile İndir",
+                                        tint = Color(0xFF25D366),
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -636,7 +616,7 @@ fun BatchDownloadOverlay(
     count: Int,
     onCancel: () -> Unit,
     onDownload: () -> Unit,
-    onHdwpDownload: () -> Unit
+    onHdwpDownload: () -> Unit = {}
 ) {
     if (count > 0) {
         GlassyBox(
@@ -690,9 +670,9 @@ fun BatchDownloadOverlay(
                         modifier = Modifier
                             .size(44.dp)
                             .background(Color(0xFF25D366).copy(alpha = 0.15f), CircleShape)
-                            .border(1.dp, Color(0xFF25D366).copy(alpha = 0.3f), CircleShape)
+                            .border(1.dp, Color(0xFF25D366).copy(alpha = 0.4f), CircleShape)
                     ) {
-                        Icon(Icons.Default.CloudUpload, contentDescription = "WhatsApp Gönder", tint = Color(0xFF25D366), modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.CloudUpload, contentDescription = "HDWP Gönder", tint = Color(0xFF25D366), modifier = Modifier.size(20.dp))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -712,65 +692,105 @@ fun BatchDownloadOverlay(
 }
 
 @Composable
-fun SibnetConverterDialog(
+fun SeasonDownloadDialog(
+    seasonNumber: Int,
+    episodes: List<AnimecixVideo>,
+    animeTitle: String,
     onDismiss: () -> Unit,
-    onPlay: (String, String) -> Unit,
-    onDownload: (String, String) -> Unit,
-    viewModel: AnimecixDetailViewModel
+    onDownloadKondi: () -> Unit,
+    onDownloadHdwp: () -> Unit = {}
 ) {
-    var url by remember { mutableStateOf("") }
-    var resolvedUrl by remember { mutableStateOf<String?>(null) }
-    var isResolving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
-
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Sibnet Link Dönüştürücü", color = Color.White) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Sibnet linkini yapıştırın.", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.6f))
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it; error = null; resolvedUrl = null },
-                    placeholder = { Text("https://video.sibnet.ru/...", color = Color.White.copy(alpha = 0.3f)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.White, unfocusedBorderColor = Color.White.copy(alpha = 0.3f))
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Download,
+                    contentDescription = null,
+                    tint = Color(0xFFFF2E93),
+                    modifier = Modifier.size(24.dp)
                 )
-                if (isResolving) CircularProgressIndicator(modifier = Modifier.size(24.dp).align(Alignment.CenterHorizontally), color = Color.White)
-                error?.let { Text(it, color = Color.White, style = MaterialTheme.typography.bodySmall) }
-                resolvedUrl?.let { Text("Link başarıyla çözüldü!", color = Color(0xFF00C853), style = MaterialTheme.typography.bodySmall) }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Sezon $seasonNumber İndir",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "\"$animeTitle\" dizisine ait Sezon $seasonNumber kapsamındaki ${episodes.size} bölümün tamamı indirme kuyruğuna eklenecektir.",
+                    color = Color.White.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    "Daha önce indirilmiş olan bölümler otomatik olarak atlanacaktır.",
+                    color = Color.White.copy(alpha = 0.5f),
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (resolvedUrl == null) {
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                isResolving = true
-                                error = null
-                                try {
-                                    val resolved = viewModel.resolveUrl(url)
-                                    if (resolved != null && resolved.startsWith("http") && resolved != url) resolvedUrl = resolved
-                                    else error = "Link çözülemedi."
-                                } catch (e: Exception) { error = "Hata: ${e.message}" }
-                                finally { isResolving = false }
-                            }
-                        },
-                        enabled = url.isNotBlank() && !isResolving,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f))
-                    ) { Text("Çöz") }
-                } else {
-                    Button(onClick = { onPlay(resolvedUrl!!, "Sibnet Video") }, colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f))) { Text("Oynat") }
-                    Button(onClick = { onDownload(resolvedUrl!!, "Sibnet Video") }, colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f))) { Text("İndir") }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onDownloadKondi,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF2E93)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Download,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Kondi İle İndir (${episodes.size} Bölüm)",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                Button(
+                    onClick = onDownloadHdwp,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.CloudUpload,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "HDWP / WhatsApp ile Gönder",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         },
-        containerColor = Color(0xFF1A1A1A)
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Vazgeç", color = Color.White.copy(alpha = 0.6f))
+            }
+        },
+        containerColor = Color(0xFF1E1E2C),
+        shape = RoundedCornerShape(20.dp)
     )
 }
+
 @Composable
 fun LoadingPlaceholder(padding: PaddingValues) {
     val brush = com.myanim.kondi.ui.common.shimmerBrush()

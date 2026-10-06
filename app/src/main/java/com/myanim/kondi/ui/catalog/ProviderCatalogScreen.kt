@@ -256,10 +256,7 @@ fun ProviderCatalogScreen(
                                 title = spotlightItem.name ?: "Anime",
                                 posterUrl = spotlightItem.poster,
                                 backdropUrl = spotlightItem.poster,
-                                quality = "1080p FHD",
-                                rating = "9.9",
                                 episodeText = if (spotlightItem.episodeNumber != null) "EP ${spotlightItem.episodeNumber}" else "YENİ BÖLÜM",
-                                synopsis = "En yeni bölüm Animecix üzerinden yayında. Hemen Türkçe altyazılı izleyin.",
                                 onPlayClick = {
                                     val animeId = spotlightItem.animeId
                                     val videoUrl = spotlightItem.url
@@ -341,7 +338,6 @@ fun ProviderCatalogScreen(
                         MediaPosterCard(
                             title = item.title,
                             posterUrl = item.posterUrl,
-                            quality = "1080p FHD",
                             episodeText = item.episodeText,
                             rating = item.rating,
                             isFavorite = item.isFavorite,
@@ -357,7 +353,6 @@ fun ProviderCatalogScreen(
                                     description = null,
                                     language = null,
                                     category = null,
-                                    quality = "1080p FHD"
                                 )
                                 animecixViewModel.toggleFavorite(video)
                             },

@@ -3,6 +3,7 @@ package com.myanim.kondi.ui.animecix
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.*
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -58,7 +60,7 @@ fun AnimecixDetailScreen(
 
     var selectedEpisodeTitle by remember { mutableStateOf("") }
     var showSourceDialog by remember { mutableStateOf(false) }
-    var showConverterDialog by remember { mutableStateOf(false) }
+    var seasonToDownload by remember { mutableStateOf<Pair<Int, List<AnimecixVideo>>?>(null) }
     val sourceSizes = remember { mutableStateMapOf<String, Long>() }
     val scope = rememberCoroutineScope()
     
@@ -209,12 +211,58 @@ fun AnimecixDetailScreen(
             }
         )
 
-        if (showConverterDialog) {
-            SibnetConverterDialog(
-                onDismiss = { showConverterDialog = false },
-                onPlay = { url, title -> onVideoClick(url, animeId, 1, 0, title); showConverterDialog = false },
-                onDownload = { url, title -> downloadManager.startDownload(title, url, source = "SIBNET", forceDisplayName = true); showConverterDialog = false },
-                viewModel = viewModel
+
+        seasonToDownload?.let { (seasonNum, seasonEpisodes) ->
+            SeasonDownloadDialog(
+                seasonNumber = seasonNum,
+                episodes = seasonEpisodes,
+                animeTitle = anime?.title ?: "Anime",
+                onDismiss = { seasonToDownload = null },
+                onDownloadKondi = {
+                    val currentMaxOrder = downloads.maxOfOrNull { it.queueOrder } ?: 0
+                    val orderedEpisodes = seasonEpisodes
+                        .filter { video ->
+                            val cat = video.category?.lowercase() ?: ""
+                            cat != "trailer" && cat != "opening credits" && cat != "ending credits" && (video.episodeNumber ?: 0) > 0
+                        }
+                        .sortedWith(compareBy({ it.seasonNumber ?: 1 }, { it.episodeNumber ?: 0 }))
+                    val startOrder = if (currentMaxOrder > 0) currentMaxOrder + 1 else ((System.currentTimeMillis() / 1000) % Int.MAX_VALUE).toInt()
+                    var addedCount = 0
+                    orderedEpisodes.forEachIndexed { index, video ->
+                        val fileName = com.myanim.kondi.data.download.DownloadUtils.createAnimecixFileName(
+                            anime?.title ?: "Anime",
+                            video.seasonNumber ?: 1,
+                            video.episodeNumber ?: 0
+                        )
+                        val existingDownload = downloads.find { it.title == fileName }
+                        if (existingDownload != null && existingDownload.status == com.myanim.kondi.data.local.DownloadStatus.COMPLETED.name) {
+                            // Already downloaded, skip
+                        } else {
+                            val lazyUrl = "animecix://resolve?episodeId=${video.episodeId ?: 0}&animeId=${video.animeId ?: animeId}&season=${video.seasonNumber ?: 1}&episode=${video.episodeNumber ?: 0}"
+                            downloadManager.startDownload(
+                                title = fileName,
+                                url = lazyUrl,
+                                source = "ANIMECIX",
+                                headers = mapOf("Referer" to "https://animecix.net"),
+                                forceDisplayName = true,
+                                queueOrder = startOrder + index
+                            )
+                            addedCount++
+                        }
+                    }
+                    if (addedCount > 0) {
+                        val skippedCount = orderedEpisodes.size - addedCount
+                        val msg = if (skippedCount > 0) "$addedCount bölüm kuyruğa eklendi ($skippedCount zaten indirilmiş)" else "$addedCount bölüm indirme kuyruğuna eklendi"
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Sezonun tüm bölümleri zaten indirilmiş!", Toast.LENGTH_SHORT).show()
+                    }
+                    seasonToDownload = null
+                },
+                onDownloadHdwp = {
+                    viewModel.bulkHdwpDownload(seasonEpisodes, anime?.title ?: "Anime", context)
+                    seasonToDownload = null
+                }
             )
         }
 
@@ -276,9 +324,6 @@ fun AnimecixDetailScreen(
                             IconButton(onClick = { viewModel.toggleSortOrder() }) {
                                 Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sırala", tint = Color.White)
                             }
-                            IconButton(onClick = { showConverterDialog = true }) {
-                                Icon(Icons.Default.Link, contentDescription = "Sibnet", tint = Color.White)
-                            }
                         }
                     }
                 )
@@ -290,7 +335,17 @@ fun AnimecixDetailScreen(
                 LoadingPlaceholder(padding)
             } else {
                 anime?.let { details ->
-                    val episodes = details.videos ?: emptyList()
+                    val episodes = remember(details.videos) {
+                        (details.videos ?: emptyList()).filter { video ->
+                            val cat = video.category?.lowercase() ?: ""
+                            cat != "trailer" &&
+                            cat != "opening credits" &&
+                            cat != "ending credits" &&
+                            cat != "clip" &&
+                            cat != "teaser" &&
+                            (video.episodeNumber ?: 0) > 0
+                        }
+                    }
                     val filteredEpisodes = remember(episodes, searchQuery) {
                         if (searchQuery.isBlank()) {
                             episodes
@@ -348,22 +403,68 @@ fun AnimecixDetailScreen(
                             displaySeasons.forEach { (seasonNum, seasonEpisodes) ->
                                 item(key = "season_header_$seasonNum") {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .width(4.dp)
-                                                .height(18.dp)
-                                                .background(Color(0xFFFF2E93), RoundedCornerShape(2.dp))
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            "Sezon $seasonNum",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(4.dp)
+                                                    .height(18.dp)
+                                                    .background(Color(0xFFFF2E93), RoundedCornerShape(2.dp))
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                "Sezon $seasonNum",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Surface(
+                                                color = Color.White.copy(alpha = 0.12f),
+                                                shape = RoundedCornerShape(10.dp)
+                                            ) {
+                                                Text(
+                                                    "${seasonEpisodes.size} Bölüm",
+                                                    color = Color.White.copy(alpha = 0.7f),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+
+                                        Surface(
+                                            onClick = {
+                                                seasonToDownload = seasonNum to seasonEpisodes
+                                            },
+                                            color = Color(0xFFFF2E93).copy(alpha = 0.15f),
+                                            shape = RoundedCornerShape(12.dp),
+                                            border = BorderStroke(1.dp, Color(0xFFFF2E93).copy(alpha = 0.4f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Download,
+                                                    contentDescription = "Sezonu İndir",
+                                                    tint = Color(0xFFFF2E93),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    "Sezonu İndir",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                                 itemsIndexed(seasonEpisodes, key = { index, video -> "season_${seasonNum}_ep_${video.episodeId ?: video.url ?: video.episodeNumber ?: index}_$index" }) { index, video ->

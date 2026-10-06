@@ -14,11 +14,12 @@ import java.io.FileOutputStream
 import java.io.BufferedOutputStream
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.sync.withPermit
 
 class HlsDownloader(private val context: android.content.Context, private val client: OkHttpClient) {
     
     private val batchSize: Int
-        get() = com.myanim.kondi.data.prefs.UserPreferencesManager.getInstance(context).downloadThreads.coerceAtMost(4)
+        get() = com.myanim.kondi.data.prefs.UserPreferencesManager.getInstance(context).downloadThreads.coerceIn(2, 8)
 
     companion object {
         private const val TAG = "HlsDownloader"
@@ -180,14 +181,18 @@ class HlsDownloader(private val context: android.content.Context, private val cl
         val totalSegments = segments.size.toLong()
         
         try {
-            // Batch halinde paralel indir
+            // Pipeline halinde paralel kesintisiz indir (Semaphore ile beklemesiz akış)
             val currentBatchSize = batchSize
-            for ((batchIndex, batch) in segments.chunked(currentBatchSize).withIndex()) {
-                coroutineContext.ensureActive() // İptal kontrolü
-                
-                val batchResults = batch.mapIndexed { indexInBatch, segmentUrl ->
-                    async(Dispatchers.IO) {
-                        val globalIndex = batchIndex * currentBatchSize + indexInBatch
+            val semaphore = kotlinx.coroutines.sync.Semaphore(currentBatchSize)
+            val downloadedCount = java.util.concurrent.atomic.AtomicInteger(0)
+            val downloadedBytes = java.util.concurrent.atomic.AtomicLong(0L)
+            val lastProgressCallbackTime = java.util.concurrent.atomic.AtomicLong(0L)
+            val resultsArray = arrayOfNulls<Pair<File, Long>>(segments.size)
+
+            val jobs = segments.mapIndexed { globalIndex, segmentUrl ->
+                async<Unit>(Dispatchers.IO) {
+                    semaphore.withPermit {
+                        coroutineContext.ensureActive()
                         val tempFile = File(
                             outputFile.parent,
                             "${outputFile.nameWithoutExtension}_seg_${globalIndex.toString().padStart(5, '0')}.ts"
@@ -195,8 +200,18 @@ class HlsDownloader(private val context: android.content.Context, private val cl
                         
                         // Resume: Check if segment already exists and has content
                         if (tempFile.exists() && tempFile.length() > 0) {
-                            Log.v(TAG, "Segment $globalIndex already exists, skipping")
-                            return@async Pair(tempFile, tempFile.length())
+                            val len = tempFile.length()
+                            val count = downloadedCount.incrementAndGet()
+                            val bytes = downloadedBytes.addAndGet(len)
+                            val progress = (count * 100 / totalSegments).toInt().coerceIn(0, 99)
+                            val now = System.currentTimeMillis()
+                            if (now - lastProgressCallbackTime.get() >= 1000L || count == totalSegments.toInt()) {
+                                lastProgressCallbackTime.set(now)
+                                val avgSegmentSize = bytes / count
+                                progressCallback(progress, bytes, avgSegmentSize * totalSegments)
+                            }
+                            resultsArray[globalIndex] = Pair(tempFile, len)
+                            return@withPermit
                         }
                         
                         val size = DownloadUtils.retryWithBackoff(
@@ -210,30 +225,24 @@ class HlsDownloader(private val context: android.content.Context, private val cl
                             downloadSegment(segmentUrl, tempFile, headers)
                         }
                         
-                        Pair(tempFile, size)
+                        val count = downloadedCount.incrementAndGet()
+                        val bytes = downloadedBytes.addAndGet(size)
+                        val progress = (count * 100 / totalSegments).toInt().coerceIn(0, 99)
+                        val now = System.currentTimeMillis()
+                        if (now - lastProgressCallbackTime.get() >= 1000L || count == totalSegments.toInt()) {
+                            lastProgressCallbackTime.set(now)
+                            val avgSegmentSize = bytes / count
+                            progressCallback(progress, bytes, avgSegmentSize * totalSegments)
+                        }
+                        resultsArray[globalIndex] = Pair(tempFile, size)
                     }
                 }
-                
-                // Batch'i bekle
-                val results = batchResults.awaitAll()
-                
-                results.forEach { (file, size) ->
-                    tempFiles.add(file)
-                    totalDownloaded += size
-                }
-                
-                Log.v(TAG, "Batch completed: ${tempFiles.size}/$totalSegments")
-                
-                // İlerleme güncelle
-                val progress = (tempFiles.size * 100 / totalSegments).toInt()
-                val avgSegmentSize = if (tempFiles.isNotEmpty()) totalDownloaded / tempFiles.size else 0L
-                val estimatedTotal = avgSegmentSize * totalSegments
-                
-                progressCallback(progress, totalDownloaded, estimatedTotal)
-                
-                if (batchIndex % 5 == 0) {
-                    Log.d(TAG, "Progress: ${tempFiles.size}/$totalSegments segments, ${totalDownloaded / 1024 / 1024} MB downloaded")
-                }
+            }
+            
+            jobs.awaitAll()
+
+            resultsArray.filterNotNull().forEach { (file, _) ->
+                tempFiles.add(file)
             }
             
             Pair(tempFiles.toList(), true)
@@ -422,19 +431,22 @@ class HlsDownloader(private val context: android.content.Context, private val cl
         // Atomik birleştirme: önce geçici dosyaya yaz, sonra yeniden adlandır
         val tempMerge = File(outputFile.parent, "${outputFile.name}.merging")
         
-        // 256 KB merge buffer - daha hızlı disk write
-        val mergeBuffer = BUFFER_SIZE * 2
-        BufferedOutputStream(FileOutputStream(tempMerge), mergeBuffer).use { output ->
-            val buffer = ByteArray(mergeBuffer)
-
+        // Zero-copy FileChannel ile yüksek hızlı segment birleştirme
+        java.io.FileOutputStream(tempMerge, false).use { outFos ->
+            val outChannel = outFos.channel
             sortedSegments.forEach { segment ->
-                segment.inputStream().buffered(BUFFER_SIZE).use { input ->
-                    var bytesRead: Int
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
+                try {
+                    java.io.FileInputStream(segment).use { inFis ->
+                        val inChannel = inFis.channel
+                        var transferred = 0L
+                        val size = inChannel.size()
+                        while (transferred < size) {
+                            transferred += inChannel.transferTo(transferred, size - transferred, outChannel)
+                        }
                     }
+                } catch (_: Exception) {
+                    segment.inputStream().use { it.copyTo(outFos, 262144) }
                 }
-                // Segment'leri merge sırasında silme - finally bloğunda silinecek
             }
         }
         

@@ -79,55 +79,15 @@ fun ProviderHubScreen(
                 )
             }
 
-            // 2. VIP Server & Health Telemetry Banner
-            item {
-                ServerTelemetryStrip(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
-                )
-            }
 
             // 3. Spotlight Featured Banner (Canlı Simulcast / Vitrin Anime)
             if (spotlightHero != null) {
                 item {
-                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "GÜNÜN ÖNE ÇIKANI",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = NeonMagenta,
-                                    letterSpacing = 1.sp
-                                )
-                                Text(
-                                    text = "Haftanın Anime Seçimi",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color.White
-                                )
-                            }
-                            Text(
-                                text = "1080p FHD",
-                                fontSize = 11.sp,
-                                color = NeonCyan,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
                         SpotlightHeroBanner(
                             title = spotlightHero.name ?: "Anime Seçimi",
                             posterUrl = spotlightHero.poster,
                             backdropUrl = spotlightHero.poster,
-                            quality = "1080p FHD",
-                            rating = "9.9",
-                            episodeText = if (spotlightHero.episodeNumber != null) "EP ${spotlightHero.episodeNumber} • YENİ" else "SİMULCAST",
-                            synopsis = "En son Animecix bölümü yayında. Kesintisiz Türkçe altyazılı izleyin.",
+                            episodeText = if (spotlightHero.episodeNumber != null) "EP ${spotlightHero.episodeNumber} • YENİ" else null,
                             onPlayClick = {
                                 val heroAnimeId = spotlightHero.animeId
                                 val heroVideoUrl = spotlightHero.url
@@ -139,9 +99,9 @@ fun ProviderHubScreen(
                             },
                             onDetailsClick = {
                                 spotlightHero.animeId?.let { onAnimeClick(it) }
-                            }
+                            },
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
                         )
-                    }
                 }
             }
 
@@ -439,7 +399,7 @@ private fun HubHeader(
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "ANIMECIX",
+                        text = "Kondi",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White,
@@ -451,21 +411,9 @@ private fun HubHeader(
                             .background(NeonMagenta.copy(alpha = 0.2f))
                             .border(0.5.dp, NeonMagenta, RoundedCornerShape(4.dp))
                             .padding(horizontal = 5.dp, vertical = 1.dp)
-                    ) {
-                        Text(
-                            text = "PRIME",
-                            color = NeonMagenta,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
+                    ) 
                 }
-                Text(
-                    text = "Resmi Anime & Simulcast Akışı",
-                    fontSize = 11.sp,
-                    color = TextMed,
-                    fontWeight = FontWeight.Medium
-                )
+                
             }
         }
 
@@ -533,57 +481,4 @@ private fun HubHeader(
     }
 }
 
-/**
- * Server Telemetry & Status Strip
- */
-@Composable
-private fun ServerTelemetryStrip(
-    modifier: Modifier = Modifier
-) {
-    LuxuryGlassCard(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        containerColor = Color.White.copy(alpha = 0.03f),
-        borderColor = Color.White.copy(alpha = 0.08f)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                GlowingStatusBadge(status = ProviderStatus.ONLINE, customText = "ANIMECIX AKTİF")
-                Text(
-                    text = "• Canlı Simulcast",
-                    fontSize = 11.sp,
-                    color = TextMed,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Speed,
-                    contentDescription = null,
-                    tint = NeonCyan,
-                    modifier = Modifier.size(14.dp)
-                )
-                Text(
-                    text = "12ms • 10G Hat",
-                    fontSize = 11.sp,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
-}
 

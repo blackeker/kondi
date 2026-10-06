@@ -101,6 +101,11 @@ class MainActivity : ComponentActivity() {
                     targetRoute?.let { route ->
                         if (route == "animecix_downloads") {
                             initialPage.intValue = 3
+                        } else if (route.startsWith("anime_detail/")) {
+                            val id = route.substringAfter("anime_detail/").toIntOrNull()
+                            if (id != null) {
+                                navController.navigate(DetailDestination(id))
+                            }
                         }
                         navigationRoute.value = null // Reset
                     }

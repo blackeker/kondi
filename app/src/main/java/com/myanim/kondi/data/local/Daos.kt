@@ -79,6 +79,9 @@ interface FavoriteDao {
     @Query("SELECT * FROM favorites ORDER BY timestamp DESC")
     fun getAllFavorites(): Flow<List<Favorite>>
 
+    @Query("SELECT * FROM favorites ORDER BY timestamp DESC")
+    suspend fun getAllFavoritesSync(): List<Favorite>
+
     @Query("SELECT * FROM favorites WHERE source = :source ORDER BY timestamp DESC")
     fun getFavoritesBySource(source: String): Flow<List<Favorite>>
 

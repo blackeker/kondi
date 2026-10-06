@@ -42,7 +42,7 @@ data class AnimecixVideo(
     @SerializedName("title_id", alternate = ["anime_id"]) val animeId: Int?,
     @SerializedName("language") val language: String?,
     @SerializedName("category") val category: String?,
-    @SerializedName("quality") val quality: String?,
+    @SerializedName("quality") val quality: String? = null,
     @SerializedName("videos") val videos: List<AnimecixVideoDetail>? = null
 ) {
     val url: String? get() = directUrl ?: videos?.firstOrNull()?.url

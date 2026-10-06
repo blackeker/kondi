@@ -33,8 +33,10 @@ class DownloadNotificationManager private constructor(private val context: Conte
     private val notificationManager = NotificationManagerCompat.from(context)
     private val activeDownloads = ConcurrentHashMap<String, DownloadState>()
     
-    // Notification throttling - Performans için
-    private val minUpdateIntervalMs = 500L
+    // Notification throttling - Performans ve Android OS rate limit (max 5/sec) koruması için
+    private val minUpdateIntervalMs = 1000L
+    private var lastSummaryUpdateTime = 0L
+    private val minSummaryUpdateIntervalMs = 1500L
     
     companion object {
         private const val CHANNEL_ID = "downloads"
@@ -304,7 +306,7 @@ class DownloadNotificationManager private constructor(private val context: Conte
         if (activeDownloads.isEmpty()) {
             notificationManager.cancel(SUMMARY_ID)
         } else {
-            updateSummaryNotification()
+            updateSummaryNotification(force = true)
         }
     }
     
@@ -439,8 +441,14 @@ class DownloadNotificationManager private constructor(private val context: Conte
         error.printStackTrace()
     }
     
-    private fun updateSummaryNotification() {
+    private fun updateSummaryNotification(force: Boolean = false) {
         if (activeDownloads.isEmpty()) return
+        
+        val currentTime = System.currentTimeMillis()
+        if (!force && currentTime - lastSummaryUpdateTime < minSummaryUpdateIntervalMs) {
+            return
+        }
+        lastSummaryUpdateTime = currentTime
         
         val inboxStyle = NotificationCompat.InboxStyle()
             .setSummaryText("${activeDownloads.size} dosya işlemi")

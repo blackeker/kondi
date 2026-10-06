@@ -52,18 +52,39 @@ fun SettingsDialog(
     
     val backupManager = remember { com.myanim.kondi.data.backup.GoogleDriveBackupManager(context) }
     var signedInAccount by remember { mutableStateOf(backupManager.getSignedInAccount()) }
+    var isBackingUp by remember { mutableStateOf(false) }
+    var isRestoring by remember { mutableStateOf(false) }
+    var backupStatusMessage by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
     
     val signInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        val data = result.data
+        if (data != null) {
+            val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(data)
             try {
-                signedInAccount = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
-                Toast.makeText(context, "Giriş başarılı: ${signedInAccount?.email}", Toast.LENGTH_SHORT).show()
+                val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+                signedInAccount = account
+                backupStatusMessage = null
+                Toast.makeText(context, "Giriş başarılı: ${account?.email}", Toast.LENGTH_SHORT).show()
+            } catch (e: com.google.android.gms.common.api.ApiException) {
+                val errorMsg = when (e.statusCode) {
+                    12500 -> "Giriş başarısız oldu (Kod 12500). Google Cloud OAuth Client ID / SHA-1 tanımlaması gerekebilir."
+                    10 -> "Geliştirici yapılandırma hatası (Kod 10). Google Cloud SHA-1 parmak izi eklenmeli."
+                    12501 -> "Giriş kullanıcı tarafından iptal edildi."
+                    7 -> "Ağ hatası: Lütfen internet bağlantınızı kontrol edin."
+                    else -> "Giriş hatası (Kod ${e.statusCode}): ${e.localizedMessage ?: e.message}"
+                }
+                backupStatusMessage = errorMsg
+                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
+                backupStatusMessage = "Hata: ${e.message}"
                 Toast.makeText(context, "Giriş hatası: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            if (result.resultCode != android.app.Activity.RESULT_OK) {
+                backupStatusMessage = "Giriş işlemi tamamlanamadı veya iptal edildi."
             }
         }
     }
@@ -337,13 +358,13 @@ fun SettingsDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Backup, null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Backup, null, tint = Color.Cyan, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = "Bulut Yedekleme (Google Drive)",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.8f)
+                        color = Color.White
                     )
                 }
                 Spacer(modifier = Modifier.height(12.dp))
@@ -352,36 +373,131 @@ fun SettingsDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White.copy(alpha = 0.03f))
-                        .border(0.5.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.04f))
+                        .border(
+                            0.5.dp, 
+                            if (signedInAccount != null) Color(0xFF00E676).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.08f), 
+                            RoundedCornerShape(16.dp)
+                        )
                         .padding(14.dp)
                 ) {
                     Column {
                         if (signedInAccount == null) {
-                            Text(
-                                text = "Favorileriniz, geçmişiniz ve ayarlarınızı Google Drive'a yedekleyin.",
-                                fontSize = 12.sp,
-                                color = Color.White.copy(alpha = 0.6f)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Surface(
+                                    color = Color.White.copy(alpha = 0.08f),
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Backup,
+                                            contentDescription = null,
+                                            tint = Color.White.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Hesap Bağlı Değil",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White.copy(alpha = 0.9f)
+                                    )
+                                    Text(
+                                        text = "Favoriler ve geçmişi Google Drive'a senkronize edin.",
+                                        fontSize = 11.sp,
+                                        color = Color.White.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
+                            
+                            backupStatusMessage?.let { error ->
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = error,
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFFF5252),
+                                    lineHeight = 14.sp
+                                )
+                            }
+                            
                             Spacer(modifier = Modifier.height(12.dp))
                             Button(
                                 onClick = {
+                                    backupStatusMessage = null
                                     signInLauncher.launch(backupManager.googleSignInClient.signInIntent)
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color.Cyan),
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().height(40.dp),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text("Google ile Giriş Yap", color = Color.Black, fontWeight = FontWeight.Bold)
+                                Icon(
+                                    imageVector = Icons.Default.Backup,
+                                    contentDescription = null,
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Google ile Giriş Yap", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
                         } else {
-                            Text(
-                                text = "Bağlı Hesap: ${signedInAccount?.email}",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Surface(
+                                    color = Color(0xFF00E676).copy(alpha = 0.15f),
+                                    shape = CircleShape,
+                                    border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.5f)),
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = null,
+                                            tint = Color(0xFF00E676),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = signedInAccount?.displayName ?: "Google Hesabı",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            color = Color(0xFF00E676).copy(alpha = 0.2f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "BAĞLI",
+                                                color = Color(0xFF00E676),
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = signedInAccount?.email ?: "",
+                                        fontSize = 12.sp,
+                                        color = Color.White.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(14.dp))
+                            
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -389,7 +505,9 @@ fun SettingsDialog(
                                 Button(
                                     onClick = {
                                         coroutineScope.launch {
+                                            isBackingUp = true
                                             val success = backupManager.performBackup(signedInAccount!!)
+                                            isBackingUp = false
                                             if (success) {
                                                 Toast.makeText(context, "Yedekleme başarıyla tamamlandı!", Toast.LENGTH_SHORT).show()
                                             } else {
@@ -397,16 +515,23 @@ fun SettingsDialog(
                                             }
                                         }
                                     },
+                                    enabled = !isBackingUp && !isRestoring,
                                     colors = ButtonDefaults.buttonColors(containerColor = Color.Cyan),
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.weight(1f).height(40.dp),
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
-                                    Text("Yedekle", color = Color.Black, fontWeight = FontWeight.Bold)
+                                    if (isBackingUp) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.Black, strokeWidth = 2.dp)
+                                    } else {
+                                        Text("Buluta Yedekle", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
                                 }
                                 Button(
                                     onClick = {
                                         coroutineScope.launch {
+                                            isRestoring = true
                                             val success = backupManager.performRestore(signedInAccount!!)
+                                            isRestoring = false
                                             if (success) {
                                                 Toast.makeText(context, "Veriler başarıyla geri yüklendi!", Toast.LENGTH_SHORT).show()
                                             } else {
@@ -414,14 +539,20 @@ fun SettingsDialog(
                                             }
                                         }
                                     },
+                                    enabled = !isBackingUp && !isRestoring,
                                     colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f)),
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.weight(1f).height(40.dp),
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
-                                    Text("Geri Yükle", color = Color.White, fontWeight = FontWeight.Bold)
+                                    if (isRestoring) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                    } else {
+                                        Text("Geri Yükle", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            Spacer(modifier = Modifier.height(6.dp))
                             TextButton(
                                 onClick = {
                                     backupManager.googleSignInClient.signOut().addOnCompleteListener {

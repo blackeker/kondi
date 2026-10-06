@@ -19,14 +19,18 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
     // Lock for multi-chunk progress calculations
     private val progressLock = Any()
 
-    // Download client wrapper with dedicated pool, HTTP/1.1 protocols, and timeouts
+    // Download client wrapper with dedicated pool, high-concurrency dispatcher, and timeouts
     private val downloadClient: OkHttpClient by lazy {
         client.newBuilder()
-            .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
-            .connectionPool(okhttp3.ConnectionPool(20, 5, java.util.concurrent.TimeUnit.MINUTES))
+            .dispatcher(okhttp3.Dispatcher().apply {
+                maxRequests = 128
+                maxRequestsPerHost = 32
+            })
+            .connectionPool(okhttp3.ConnectionPool(32, 5, java.util.concurrent.TimeUnit.MINUTES))
             .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .build()
     }
 
@@ -87,16 +91,25 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
 
         val prefManager = com.myanim.kondi.data.prefs.UserPreferencesManager.getInstance(context)
         val multiChunkEnabled = prefManager.enableMultiChunk
-        val numChunks = prefManager.downloadThreads.coerceAtMost(4)
+        val numChunks = prefManager.downloadThreads.coerceIn(2, 8)
 
         // Ensure we only use multi-chunk strategy if threads/chunks count is greater than 1
         val useMultiChunk = supportsRange && totalSize > 0 && multiChunkEnabled && numChunks > 1
 
         Log.i(TAG, "[$title] Probe result: supportsRange=$supportsRange, totalSize=$totalSize bytes, multiChunkEnabled=$multiChunkEnabled. Selected Strategy: ${if (useMultiChunk) "Multi-Chunk ($numChunks Chunks)" else "Single-Thread"}")
 
+        file.parentFile?.mkdirs()
+
         if (useMultiChunk) {
-            downloadMultiChunk(title, url, file, headers, totalSize, numChunks, onProgress)
-            true  // downloadMultiChunk throws on failure, so reaching here means success
+            val multiSuccess = try {
+                downloadMultiChunk(title, url, file, headers, totalSize, numChunks, onProgress)
+                true
+            } catch (e: Exception) {
+                if (e is CancellationException || e is PausedException) throw e
+                Log.w(TAG, "[$title] Multi-chunk download failed (${e.message}), falling back to Single-Thread download...")
+                downloadSingleThread(title, url, file, headers, supportsRange, onProgress)
+            }
+            multiSuccess
         } else {
             downloadSingleThread(title, url, file, headers, supportsRange, onProgress)
         }
@@ -108,8 +121,10 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
         numChunks: Int,
         onProgress: (Int, Long, Long) -> Unit
     ) = coroutineScope {
+        val parentDir = file.parentFile ?: file.absoluteFile.parentFile ?: File(".")
+        parentDir.mkdirs()
         val chunkSize = totalSize / numChunks
-        val chunkFiles = (0 until numChunks).map { File(file.parent, "${file.name}.chunk$it") }
+        val chunkFiles = (0 until numChunks).map { File(parentDir, "${file.name}.chunk$it") }
         
         val totalDownloaded = java.util.concurrent.atomic.AtomicLong(0L)
         
@@ -130,7 +145,7 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
 
         Log.i(TAG, "[$title] Starting Multi-Chunk download: totalSize=$totalSize, chunks=$numChunks, initialDownloaded=$initialDownloaded")
         
-        val tempMerge = File(file.parent, "${file.name}.merging")
+        val tempMerge = File(parentDir, "${file.name}.merging")
         
         try {
             val jobs = (0 until numChunks).map { i ->
@@ -145,6 +160,10 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
                     while (!completed && attempt < maxAttempts && isActive) {
                         try {
                             val cf = chunkFiles[i]
+                            cf.parentFile?.mkdirs()
+                            if (!cf.exists()) {
+                                try { cf.createNewFile() } catch (_: Exception) {}
+                            }
                             val existing = if (cf.exists()) cf.length() else 0L
                             val chunkTargetSize = endByte - startByte + 1
                             if (existing >= chunkTargetSize) {
@@ -169,19 +188,33 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
                                 Log.d(TAG, "[$title] Chunk $i connected: HTTP ${resp.code}, expected content length: ${body.contentLength()}")
                                 val buf = ByteArray(BUFFER_SIZE)
                                 var n = 0
+                                var yieldCounter = 0
                                 
-                                java.io.FileOutputStream(cf, true).use { fos ->
+                                val fos = try {
+                                    cf.parentFile?.mkdirs()
+                                    if (!cf.exists()) cf.createNewFile()
+                                    java.io.FileOutputStream(cf, true)
+                                } catch (_: Exception) {
+                                    val fallbackDir = cf.parentFile ?: File(cf.parent ?: "")
+                                    fallbackDir.mkdirs()
+                                    cf.createNewFile()
+                                    java.io.FileOutputStream(cf, true)
+                                }
+                                fos.use { fosStream ->
                                     java.io.BufferedInputStream(body.byteStream(), BUFFER_SIZE).use { inp ->
                                         while (isActive && inp.read(buf).also { n = it } != -1) {
-                                            yield()
-                                            fos.write(buf, 0, n)
+                                            fosStream.write(buf, 0, n)
                                             val currentTotal = totalDownloaded.addAndGet(n.toLong())
+                                            
+                                            if (++yieldCounter % 16 == 0) {
+                                                yield()
+                                            }
                                             
                                             val pct = ((currentTotal * 100) / totalSize).toInt().coerceIn(0, 99)
                                             val now = System.currentTimeMillis()
                                             var shouldCallback = false
                                             synchronized(progressLock) {
-                                                if (pct != lastCallbackPct.get() || now - lastCallbackTime.get() >= 2000L) {
+                                                if (now - lastCallbackTime.get() >= 1000L || pct >= 100) {
                                                     lastCallbackPct.set(pct)
                                                     lastCallbackTime.set(now)
                                                     shouldCallback = true
@@ -222,12 +255,28 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
 
             Log.i(TAG, "[$title] All chunks downloaded. Merging into target file: ${file.absolutePath}")
             
+            tempMerge.parentFile?.mkdirs()
             if (tempMerge.exists()) tempMerge.delete()
+            try { tempMerge.createNewFile() } catch (_: Exception) {}
             
-            java.io.FileOutputStream(tempMerge, false).use { out ->
+            // High performance zero-copy FileChannel merge
+            java.io.FileOutputStream(tempMerge, false).use { outFos ->
+                val outChannel = outFos.channel
                 chunkFiles.forEachIndexed { index, cf ->
-                    Log.d(TAG, "[$title] Merging chunk $index (${cf.length()} bytes)...")
-                    cf.inputStream().use { it.copyTo(out, 65536) }
+                    Log.d(TAG, "[$title] Fast merging chunk $index (${cf.length()} bytes)...")
+                    try {
+                        java.io.FileInputStream(cf).use { inFis ->
+                            val inChannel = inFis.channel
+                            var transferred = 0L
+                            val size = inChannel.size()
+                            while (transferred < size) {
+                                transferred += inChannel.transferTo(transferred, size - transferred, outChannel)
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // Fallback to stream copy if transferTo is not supported
+                        cf.inputStream().use { it.copyTo(outFos, 262144) }
+                    }
                 }
             }
             
@@ -264,6 +313,7 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
         
         while (!completed && attempt < maxAttempts && coroutineContext.isActive) {
             try {
+                file.parentFile?.mkdirs()
                 val existingBytes = if (file.exists()) file.length() else 0L
                 Log.i(TAG, "[$title] Starting Single-Thread download. Existing bytes: $existingBytes, supportsRange=$dynamicSupportsRange (attempt ${attempt + 1})")
                 
@@ -328,13 +378,14 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
                     var lastCallbackPct = -1
                     var yieldCounter = 0
 
+                    file.parentFile?.mkdirs()
                     java.io.FileOutputStream(file, appendMode).use { fos ->
                         java.io.BufferedInputStream(body.byteStream(), BUFFER_SIZE).use { inp ->
                             while (coroutineContext.isActive && inp.read(buf).also { n = it } != -1) {
                                 fos.write(buf, 0, n)
                                 totalRead += n
                                 
-                                if (++yieldCounter % 4 == 0) {
+                                if (++yieldCounter % 16 == 0) {
                                     yield()
                                 }
                                 
@@ -342,7 +393,7 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
                                 val now = System.currentTimeMillis()
                                 var shouldCallback = false
                                 
-                                if (pct != lastCallbackPct || now - lastCallbackTime >= 2000L) {
+                                if (now - lastCallbackTime >= 1000L || pct >= 100) {
                                     lastCallbackPct = pct
                                     lastCallbackTime = now
                                     shouldCallback = true

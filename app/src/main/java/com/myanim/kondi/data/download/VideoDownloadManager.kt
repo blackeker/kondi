@@ -46,12 +46,12 @@ class VideoDownloadManager private constructor(private val context: Context) {
     private val notificationManager = DownloadNotificationManager.getInstance(context)
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
-        .connectionPool(okhttp3.ConnectionPool(5, 5, TimeUnit.MINUTES))
+        .readTimeout(25, TimeUnit.SECONDS)
+        .writeTimeout(25, TimeUnit.SECONDS)
+        .connectionPool(okhttp3.ConnectionPool(32, 5, TimeUnit.MINUTES))
         .dispatcher(okhttp3.Dispatcher().apply {
-            maxRequests = 64
-            maxRequestsPerHost = 16
+            maxRequests = 128
+            maxRequestsPerHost = 32
         })
         .build()
     
@@ -61,7 +61,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
     private val ytDlpDownloader = YtDlpDownloader()
     
     var maxConcurrentDownloads: Int
-        get() = sharedPrefs.getInt(KEY_MAX_DOWNLOADS, 1)
+        get() = sharedPrefs.getInt(KEY_MAX_DOWNLOADS, 2)
         set(value) {
             sharedPrefs.edit().putInt(KEY_MAX_DOWNLOADS, value).apply()
             triggerQueueProcessing()
@@ -142,9 +142,8 @@ class VideoDownloadManager private constructor(private val context: Context) {
                         job.invokeOnCompletion {
                             downloadJobs.remove(download.id)
                             updateServiceState()
-                            // Launch a delayed trigger so the server has time to cool down before we make a new request
                             scope.launch {
-                                delay(6000L)
+                                delay(500L)
                                 triggerQueueProcessing()
                             }
                         }
@@ -167,16 +166,31 @@ class VideoDownloadManager private constructor(private val context: Context) {
         }
     }
 
+    fun getTempDirectory(): File {
+        val external = context.getExternalFilesDir(null)
+        val dir = if (external != null) File(external, "Kondi_Temp") else File(context.filesDir, "Kondi_Temp")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        if (!dir.exists() || !dir.canWrite()) {
+            val fallback = File(context.filesDir, "Kondi_Temp")
+            if (!fallback.exists()) fallback.mkdirs()
+            return fallback
+        }
+        return dir
+    }
+
     fun startDownload(title: String, url: String, wifiOnly: Boolean = false, cookies: String = "", headers: Map<String, String> = emptyMap(), source: String = "GENERAL", forceDisplayName: Boolean = false, queueOrder: Int? = null): String {
         val id = UUID.randomUUID().toString()
         val extension = ".mp4"
         
-        val directory = context.getExternalFilesDir("Kondi_Temp") ?: context.filesDir
-        directory.mkdirs()
+        val directory = getTempDirectory()
         
         scope.launch {
             Log.i("VideoDownloadManager", "[$title] startDownload request received: url=$url, wifiOnly=$wifiOnly, source=$source")
-            val fileName = (if (forceDisplayName) sanitizeFileName(title) else title.take(20)) + extension
+            val rawTitle = if (title.endsWith(".mp4", ignoreCase = true)) title.substringBeforeLast(".mp4") else title
+            val cleanTitle = if (forceDisplayName) sanitizeFileName(rawTitle) else rawTitle.take(20)
+            val fileName = "$cleanTitle$extension"
             val file = File(directory, fileName)
         
             val duplicate = _downloadsFlow.value.find { it.url == url }
@@ -228,7 +242,8 @@ class VideoDownloadManager private constructor(private val context: Context) {
                         val titleId = androidUri.getQueryParameter("animeId")?.toIntOrNull()
                         val season = androidUri.getQueryParameter("season")?.toIntOrNull()
                         val episodeParam = androidUri.getQueryParameter("episode")?.toIntOrNull()
-                        if (episodeId != null || (titleId != null && season != null && episodeParam != null)) {
+                        val hasValidId = (episodeId != null && episodeId > 0) || (titleId != null && season != null && episodeParam != null && episodeParam > 0)
+                        if (hasValidId) {
                             val api = com.myanim.kondi.data.animecix.AnimecixRepository()
                             
                             var sources: List<com.myanim.kondi.data.animecix.AnimecixSource> = emptyList()
@@ -347,10 +362,10 @@ class VideoDownloadManager private constructor(private val context: Context) {
                     throw PausedException()
                 }
                 val currentTime = System.currentTimeMillis()
-                if (progress != lastUpdateProgress || currentTime - lastUpdateTime > 1000L) {
+                if (currentTime - lastUpdateTime >= 1000L || progress >= 100) {
                     lastUpdateProgress = progress
                     lastUpdateTime = currentTime
-                    scope.launch {
+                    scope.launch(Dispatchers.IO) {
                         val dbTotal = dao.getDownloadById(id)?.totalBytes ?: 0L
                         val finalTotal = if (total <= 0) {
                             if (dbTotal > 0) dbTotal else total
@@ -482,13 +497,13 @@ class VideoDownloadManager private constructor(private val context: Context) {
                     return false
                 }
                 output.use { out ->
-                    src.inputStream().use { it.copyTo(out) }
+                    src.inputStream().use { it.copyTo(out, bufferSize = 262144) }
                 }
                 values.clear()
                 values.put(MediaStore.Downloads.IS_PENDING, 0)
                 context.contentResolver.update(uri, values, null, null)
                 if (src.delete()) {
-                    scope.launch { updateDownloadInDb(download.id) { it.copy(filePath = uri.toString()) } }
+                    scope.launch(Dispatchers.IO) { updateDownloadInDb(download.id) { it.copy(filePath = uri.toString()) } }
                     Log.i("VideoDownloadManager", "[$displayName] Successfully migrated to public folder via MediaStore. Uri: $uri")
                     return true
                 }
@@ -496,9 +511,9 @@ class VideoDownloadManager private constructor(private val context: Context) {
                 val destDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), subPath)
                 destDir.mkdirs()
                 val dest = File(destDir, displayName)
-                src.copyTo(dest, overwrite = true)
+                src.copyTo(dest, overwrite = true, bufferSize = 262144)
                 if (src.delete()) {
-                    scope.launch { updateDownloadInDb(download.id) { it.copy(filePath = dest.absolutePath) } }
+                    scope.launch(Dispatchers.IO) { updateDownloadInDb(download.id) { it.copy(filePath = dest.absolutePath) } }
                     Log.i("VideoDownloadManager", "[$displayName] Successfully migrated to legacy public path: ${dest.absolutePath}")
                     return true
                 }
@@ -619,14 +634,22 @@ class VideoDownloadManager private constructor(private val context: Context) {
             }
             
             // Clean up any stray chunk files left over in Kondi_Temp directory
+            // ONLY delete chunks that do NOT belong to active or pending downloads!
             var chunkDeletedCount = 0
             try {
-                val directory = context.getExternalFilesDir("Kondi_Temp") ?: context.filesDir
+                val directory = getTempDirectory()
                 if (directory.exists()) {
+                    val activePrefixes = allDownloads
+                        .filter { it.status == DownloadStatus.DOWNLOADING.name || it.status == DownloadStatus.PENDING.name }
+                        .map { File(it.filePath).name }
+
                     directory.listFiles()?.forEach { file ->
                         if (file.name.contains(".chunk")) {
-                            if (file.delete()) {
-                                chunkDeletedCount++
+                            val isActive = activePrefixes.any { file.name.startsWith(it) }
+                            if (!isActive) {
+                                if (file.delete()) {
+                                    chunkDeletedCount++
+                                }
                             }
                         }
                     }
@@ -740,12 +763,19 @@ class VideoDownloadManager private constructor(private val context: Context) {
     }
     
     fun getStrayChunksSize(): Long {
-        val directory = context.getExternalFilesDir("Kondi_Temp") ?: context.filesDir
+        val directory = getTempDirectory()
         var size = 0L
         if (directory.exists()) {
+            val activePrefixes = _downloadsFlow.value
+                .filter { it.status == DownloadStatus.DOWNLOADING.name || it.status == DownloadStatus.PENDING.name }
+                .map { File(it.filePath).name }
+
             directory.listFiles()?.forEach { file ->
                 if (file.name.contains(".chunk")) {
-                    size += file.length()
+                    val isActive = activePrefixes.any { file.name.startsWith(it) }
+                    if (!isActive) {
+                        size += file.length()
+                    }
                 }
             }
         }
@@ -766,13 +796,20 @@ class VideoDownloadManager private constructor(private val context: Context) {
     }
     
     fun clearStrayChunks(): Int {
-        val directory = context.getExternalFilesDir("Kondi_Temp") ?: context.filesDir
+        val directory = getTempDirectory()
         var deletedCount = 0
         if (directory.exists()) {
+            val activePrefixes = _downloadsFlow.value
+                .filter { it.status == DownloadStatus.DOWNLOADING.name || it.status == DownloadStatus.PENDING.name }
+                .map { File(it.filePath).name }
+
             directory.listFiles()?.forEach { file ->
                 if (file.name.contains(".chunk")) {
-                    if (file.delete()) {
-                        deletedCount++
+                    val isActive = activePrefixes.any { file.name.startsWith(it) }
+                    if (!isActive) {
+                        if (file.delete()) {
+                            deletedCount++
+                        }
                     }
                 }
             }
