@@ -165,96 +165,77 @@ class AnimecixDetailViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun bulkHdwpDownload(selectedEpisodes: List<AnimecixVideo>, animeName: String, context: Context) {
-        viewModelScope.launch {
-            withContext(Dispatchers.Main) {
-                Toast.makeText(context, "${selectedEpisodes.size} bölüm için WhatsApp gönderimi başlatılıyor...", Toast.LENGTH_SHORT).show()
-            }
+        viewModelScope.launch(Dispatchers.IO) {
+            android.util.Log.i("HDWP_BULK", "bulkHdwpDownload başlatıldı: ${selectedEpisodes.size} bölüm, Anime=$animeName")
             
-            val orderedEpisodes = selectedEpisodes.sortedWith(compareBy({ it.seasonNumber ?: 1 }, { it.episodeNumber ?: 0 }))
-            var successCount = 0
-            var failCount = 0
-            
-            for (episode in orderedEpisodes) {
-                try {
-                    val sources = repository.getVideoSources(
-                        episode.episodeId ?: 0,
-                        episode.animeId ?: _anime.value?.id,
-                        episode.seasonNumber,
-                        episode.episodeNumber
-                    )
-                    
-                    if (sources.isNotEmpty()) {
-                        val prioritized = sources.sortedByDescending {
-                            val u = it.url.lowercase()
-                            var score = 0
-                            when {
-                                u.contains("sibnet") || u.contains("ok.ru") || u.contains("odnoklassniki") -> score = 10
-                                u.contains("tau") || u.contains("tau-video") -> score = 8
-                                u.contains("dood") || u.contains("streamtape") || u.contains("voe") -> score = 5
-                                u.contains(".mp4") -> score = 3
-                                u.contains(".m3u8") -> score = 2
-                            }
-                            score
-                        }
-                        
-                        var resolvedUrl: String? = null
-                        var chosenRawUrl: String? = null
-                        
-                        for (source in prioritized) {
-                            val rawUrl = source.url
-                            if (rawUrl.isBlank()) continue
-                            
-                            val resolved = resolveUrl(rawUrl)
-                            if (resolved != null && resolved.startsWith("http")) {
-                                resolvedUrl = resolved
-                                chosenRawUrl = rawUrl
-                                break
-                            }
-                        }
-                        
-                        if (resolvedUrl != null && chosenRawUrl != null) {
-                            val lowerRawUrl = chosenRawUrl.lowercase()
-                            val urlToDownload = if (
-                                lowerRawUrl.contains("sibnet") || 
-                                lowerRawUrl.contains("ok.ru") || 
-                                lowerRawUrl.contains("odnoklassniki") || 
-                                lowerRawUrl.contains("streamtape") || 
-                                lowerRawUrl.contains("voe") || 
-                                lowerRawUrl.contains("uqload") || 
-                                lowerRawUrl.contains("dood")
-                            ) {
-                                chosenRawUrl
-                            } else {
-                                resolvedUrl
-                            }
-                            
-                            val formattedTitle = "$animeName - Sezon ${episode.seasonNumber ?: 1} Bölüm ${episode.episodeNumber ?: 0}"
-                            com.myanim.kondi.util.HdwpDownloaderHelper.sendDownloadRequest(
-                                context = context, 
-                                videoUrl = urlToDownload,
-                                title = formattedTitle
-                            )
-                            successCount++
-                            kotlinx.coroutines.delay(1000L)
-                        } else {
-                            failCount++
-                        }
-                    } else {
-                        failCount++
-                    }
-                } catch (e: Exception) {
-                    failCount++
-                    Timber.e(e, "Error sending bulk HDWP download for episode ${episode.episodeNumber}")
+            val validEpisodes = selectedEpisodes.filter { video ->
+                val cat = video.category?.lowercase() ?: ""
+                cat != "trailer" && cat != "opening credits" && cat != "ending credits"
+            }.sortedWith(compareBy({ it.seasonNumber ?: 1 }, { it.episodeNumber ?: 0 }))
+
+            if (validEpisodes.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "İndirilecek geçerli bölüm bulunamadı.", Toast.LENGTH_SHORT).show()
                 }
+                return@launch
             }
-            
-            withContext(Dispatchers.Main) {
-                if (successCount > 0) {
-                    Toast.makeText(context, "$successCount bölüm başarıyla VDS/WhatsApp kuyruğuna eklendi! (Başarısız: $failCount)", Toast.LENGTH_LONG).show()
+
+            val currentAnimeId = _anime.value?.id
+            val allAnimeVideos = _anime.value?.videos ?: emptyList()
+            val bulkItems = mutableListOf<com.myanim.kondi.util.HdwpBulkItem>()
+
+            for (episode in validEpisodes) {
+                val seasonNum = episode.seasonNumber ?: 1
+                val episodeNum = episode.episodeNumber ?: 0
+                val formattedTitle = "$animeName - Sezon $seasonNum Bölüm $episodeNum"
+
+                val matchedFromAnime = allAnimeVideos.find { 
+                    (it.episodeId != null && it.episodeId == episode.episodeId) ||
+                    (it.seasonNumber == seasonNum && it.episodeNumber == episodeNum)
+                }
+
+                val memorySourceUrl = matchedFromAnime?.videos?.firstOrNull { !it.url.isNullOrBlank() }?.url
+                    ?: episode.videos?.firstOrNull { !it.url.isNullOrBlank() }?.url
+                    ?: episode.url
+                    ?: matchedFromAnime?.url
+
+                val targetUrl = if (!memorySourceUrl.isNullOrBlank()) {
+                    memorySourceUrl
                 } else {
-                    Toast.makeText(context, "Hiçbir bölüm VDS/WhatsApp kuyruğuna eklenemedi.", Toast.LENGTH_LONG).show()
+                    val titleId = currentAnimeId ?: episode.animeId
+                    if (titleId != null && titleId > 0) {
+                        "https://animecix.tv/titles/$titleId/season/$seasonNum/episode/$episodeNum"
+                    } else {
+                        null
+                    }
+                }
+
+                if (!targetUrl.isNullOrBlank()) {
+                    val fn = "$animeName - S${seasonNum.toString().padStart(2, '0')}E${episodeNum.toString().padStart(2, '0')}.mp4"
+                    bulkItems.add(
+                        com.myanim.kondi.util.HdwpBulkItem(
+                            url = targetUrl,
+                            title = formattedTitle,
+                            fileName = fn,
+                            caption = formattedTitle
+                        )
+                    )
                 }
             }
+
+            if (bulkItems.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Bölüm linkleri oluşturulamadı.", Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+
+            android.util.Log.i("HDWP_BULK", "${bulkItems.size} bölüm VDS sunucusuna gönderiliyor...")
+            com.myanim.kondi.util.HdwpDownloaderHelper.sendBulkDownloadRequest(
+                context = context,
+                items = bulkItems,
+                seriesName = animeName
+            )
         }
     }
 

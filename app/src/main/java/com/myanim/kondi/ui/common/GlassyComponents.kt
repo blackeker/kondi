@@ -432,8 +432,6 @@ fun SpotlightHeroBanner(
     title: String,
     posterUrl: String?,
     backdropUrl: String? = null,
-    rating: String = "9.8",
-    quality: String = "HD 1080P",
     episodeText: String? = null,
     synopsis: String = "",
     onPlayClick: () -> Unit,
@@ -443,14 +441,14 @@ fun SpotlightHeroBanner(
     LuxuryGlassCard(
         modifier = modifier
             .fillMaxWidth()
-            .height(230.dp),
-        shape = RoundedCornerShape(24.dp),
+            .height(200.dp),
+        shape = RoundedCornerShape(20.dp),
         containerColor = GlassSurface,
         borderGradient = Brush.linearGradient(
             listOf(
-                NeonMagenta.copy(alpha = 0.6f),
+                Color.White.copy(alpha = 0.15f),
                 GlassBorder,
-                NeonCyan.copy(alpha = 0.4f)
+                NeonCyan.copy(alpha = 0.25f)
             )
         )
     ) {
@@ -469,52 +467,27 @@ fun SpotlightHeroBanner(
                         Brush.verticalGradient(
                             colors = listOf(
                                 Color.Transparent,
-                                ObsidianBlack.copy(alpha = 0.6f),
-                                ObsidianBlack.copy(alpha = 0.96f)
+                                ObsidianBlack.copy(alpha = 0.5f),
+                                ObsidianBlack.copy(alpha = 0.95f)
                             )
                         )
                     )
             )
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // Top Episode Badge if present
+            if (episodeText != null) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(NeonMagenta.copy(alpha = 0.85f))
+                        .align(Alignment.TopStart)
+                        .padding(12.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(ObsidianBlack.copy(alpha = 0.75f))
+                        .border(0.8.dp, NeonCyan.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                         .padding(horizontal = 8.dp, vertical = 3.dp)
                 ) {
                     Text(
-                        text = quality,
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-
-                Row(
-                    modifier = Modifier
-                        .clip(CapsuleShape)
-                        .background(ObsidianBlack.copy(alpha = 0.7f))
-                        .border(0.8.dp, AmberRating.copy(alpha = 0.4f), CapsuleShape)
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = AmberRating,
-                        modifier = Modifier.size(12.dp)
-                    )
-                    Text(
-                        text = rating,
-                        color = Color.White,
+                        text = episodeText,
+                        color = NeonCyan,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -525,21 +498,11 @@ fun SpotlightHeroBanner(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(14.dp)
             ) {
-                if (episodeText != null) {
-                    Text(
-                        text = episodeText,
-                        color = NeonCyan,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 0.8.sp
-                    )
-                }
-
                 Text(
                     text = title,
-                    fontSize = 19.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.White,
                     maxLines = 1,
@@ -547,6 +510,7 @@ fun SpotlightHeroBanner(
                 )
 
                 if (synopsis.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = synopsis,
                         fontSize = 11.sp,
@@ -556,7 +520,7 @@ fun SpotlightHeroBanner(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -569,9 +533,9 @@ fun SpotlightHeroBanner(
                             containerColor = Color.White,
                             contentColor = Color.Black
                         ),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        modifier = Modifier.height(36.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                        modifier = Modifier.height(34.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -584,25 +548,25 @@ fun SpotlightHeroBanner(
                                 tint = Color.Black
                             )
                             Text(
-                                text = "Hemen İzle",
+                                text = "İzle",
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Black
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
 
                     OutlinedButton(
                         onClick = onDetailsClick,
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                        modifier = Modifier.height(36.dp)
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        modifier = Modifier.height(34.dp)
                     ) {
                         Text(
-                            text = "Detaylar",
+                            text = "Detay",
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
@@ -612,16 +576,15 @@ fun SpotlightHeroBanner(
 }
 
 /**
- * 2 veya 3 Sütunlu Medya Izgarası Poster Kartı
- * Kart Üzeri: Bölüm rozeti (`EP 12`), Kalite, Puan (`★ 9.8`), ve tek dokunuşla favori ekleme kalbi (`❤️`).
+ * Temiz ve Minimalist Medya Poster Kartı
  */
 @Composable
 fun MediaPosterCard(
     title: String,
     posterUrl: String?,
     episodeText: String? = null,
-    rating: String = "9.8",
-    quality: String = "HD",
+    rating: String? = null,
+    quality: String? = null,
     isFavorite: Boolean = false,
     onFavoriteToggle: (() -> Unit)? = null,
     onClick: () -> Unit,
@@ -629,158 +592,103 @@ fun MediaPosterCard(
 ) {
     var favoriteState by remember(title, isFavorite) { mutableStateOf(isFavorite) }
 
-    LuxuryGlassCard(
+    Column(
         modifier = modifier
-            .fillMaxWidth()
-            .height(260.dp),
-        shape = RoundedCornerShape(20.dp),
-        containerColor = GlassSurface,
-        borderColor = GlassBorder,
-        onClick = onClick
+            .bounceClick()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(210.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(GlassSurface)
+                .border(0.8.dp, GlassBorderSubtle, RoundedCornerShape(16.dp))
+        ) {
+            AsyncImage(
+                model = posterUrl ?: "file:///android_asset/placeholder.png",
+                contentDescription = title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            ) {
-                AsyncImage(
-                    model = posterUrl ?: "file:///android_asset/placeholder.png",
-                    contentDescription = title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.Black.copy(alpha = 0.75f)
-                                ),
-                                startY = 120f
-                            )
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.65f)
+                            ),
+                            startY = 120f
                         )
-                )
+                    )
+            )
 
-                // Top Left: Quality / Year Badge
+            // Top Right: Favorite Heart Button
+            if (onFavoriteToggle != null) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopStart)
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(ObsidianBlack.copy(alpha = 0.65f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            favoriteState = !favoriteState
+                            onFavoriteToggle()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (favoriteState) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = "Favori",
+                        tint = if (favoriteState) ElectricPink else Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
+
+            // Bottom Left: Episode Badge (EP 12 vb.)
+            if (episodeText != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
                         .padding(8.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(ObsidianBlack.copy(alpha = 0.8f))
-                        .border(0.5.dp, GlassBorder, RoundedCornerShape(6.dp))
+                        .background(ObsidianBlack.copy(alpha = 0.85f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = quality,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyan
-                    )
-                }
-
-                // Top Right: Favorite Heart Button
-                if (onFavoriteToggle != null) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(ObsidianBlack.copy(alpha = 0.75f))
-                            .border(0.6.dp, GlassBorder, CircleShape)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                favoriteState = !favoriteState
-                                onFavoriteToggle()
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (favoriteState) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                            contentDescription = "Favori",
-                            tint = if (favoriteState) ElectricPink else Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                // Bottom Left: Episode Badge (EP 12)
-                if (episodeText != null) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(8.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(
-                                Brush.horizontalGradient(listOf(NeonCyan, NeonMagenta))
-                            )
-                            .padding(horizontal = 7.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = episodeText,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.Black
-                        )
-                    }
-                }
-
-                // Bottom Right: Rating Badge
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(8.dp)
-                        .clip(CapsuleShape)
-                        .background(ObsidianBlack.copy(alpha = 0.85f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = AmberRating,
-                        modifier = Modifier.size(10.dp)
-                    )
-                    Text(
-                        text = rating,
+                        text = episodeText,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 }
             }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = title,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "Animecix Simulcast",
-                    fontSize = 11.sp,
-                    color = TextMed,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = title,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 2.dp)
+        )
     }
 }
 

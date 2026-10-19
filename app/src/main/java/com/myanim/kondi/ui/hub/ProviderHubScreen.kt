@@ -80,65 +80,71 @@ fun ProviderHubScreen(
             }
 
 
-            // 3. Spotlight Featured Banner (Canlı Simulcast / Vitrin Anime)
+            // 3. Spotlight Featured Banner
             if (spotlightHero != null) {
                 item {
-                        SpotlightHeroBanner(
-                            title = spotlightHero.name ?: "Anime Seçimi",
-                            posterUrl = spotlightHero.poster,
-                            backdropUrl = spotlightHero.poster,
-                            episodeText = if (spotlightHero.episodeNumber != null) "EP ${spotlightHero.episodeNumber} • YENİ" else null,
-                            onPlayClick = {
-                                val heroAnimeId = spotlightHero.animeId
-                                val heroVideoUrl = spotlightHero.url
-                                if (heroAnimeId != null) {
-                                    onAnimeClick(heroAnimeId)
-                                } else if (heroVideoUrl != null) {
-                                    onVideoClick(heroVideoUrl, spotlightHero.name ?: "Anime")
-                                }
-                            },
-                            onDetailsClick = {
-                                spotlightHero.animeId?.let { onAnimeClick(it) }
-                            },
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
-                        )
+                    SpotlightHeroBanner(
+                        title = spotlightHero.name ?: "Anime Seçimi",
+                        posterUrl = spotlightHero.poster,
+                        backdropUrl = spotlightHero.poster,
+                        episodeText = if (spotlightHero.episodeNumber != null) "${spotlightHero.episodeNumber}. Bölüm" else "Yeni",
+                        onPlayClick = {
+                            val heroAnimeId = spotlightHero.animeId
+                            val heroVideoUrl = spotlightHero.url
+                            if (heroAnimeId != null) {
+                                onAnimeClick(heroAnimeId)
+                            } else if (heroVideoUrl != null) {
+                                onVideoClick(heroVideoUrl, spotlightHero.name ?: "Anime")
+                            }
+                        },
+                        onDetailsClick = {
+                            spotlightHero.animeId?.let { onAnimeClick(it) }
+                        },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
                 }
             }
 
-            // 4. Continue Watching Shelf (Son İzlenenler)
+            // 4. Continue Watching Shelf (İzlemeye Devam Et)
             if (watchHistory.isNotEmpty()) {
                 item {
-                    Column(modifier = Modifier.padding(top = 10.dp, bottom = 14.dp)) {
+                    Column(modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 6.dp),
+                                .padding(horizontal = 18.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = "İzlemeye Devam Et",
-                                fontSize = 18.sp,
+                                fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                         }
 
                         LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             itemsIndexed(watchHistory, key = { index, item -> "hub_hist_${item.videoUrl}_$index" }) { index, item ->
-                                LuxuryGlassCard(
+                                Column(
                                     modifier = Modifier
-                                        .width(220.dp)
-                                        .height(130.dp),
-                                    shape = RoundedCornerShape(18.dp),
-                                    onClick = {
-                                        onVideoClick(item.videoUrl, item.title)
-                                    }
+                                        .width(180.dp)
+                                        .bounceClick()
+                                        .clickable {
+                                            onVideoClick(item.videoUrl, item.title)
+                                        }
                                 ) {
-                                    Box(modifier = Modifier.fillMaxSize()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(105.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(GlassSurface)
+                                            .border(0.8.dp, GlassBorderSubtle, RoundedCornerShape(14.dp))
+                                    ) {
                                         AsyncImage(
                                             model = item.posterUrl ?: "file:///android_asset/placeholder.png",
                                             contentDescription = item.title,
@@ -153,50 +159,39 @@ fun ProviderHubScreen(
                                                     Brush.verticalGradient(
                                                         listOf(
                                                             Color.Transparent,
-                                                            ObsidianBlack.copy(alpha = 0.90f)
+                                                            Color.Black.copy(alpha = 0.75f)
                                                         )
                                                     )
                                                 )
                                         )
 
-                                        Column(
+                                        Box(
                                             modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(12.dp),
-                                            verticalArrangement = Arrangement.SpaceBetween
+                                                .align(Alignment.Center)
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(Color.Black.copy(alpha = 0.6f)),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(ElectricPink.copy(alpha = 0.85f))
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                            ) {
-                                                Text(
-                                                    text = "DEVAM ET",
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Color.White
-                                                )
-                                            }
-
-                                            Column {
-                                                Text(
-                                                    text = item.title,
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.White,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Text(
-                                                    text = "Son İzlenen",
-                                                    fontSize = 10.sp,
-                                                    color = TextMed
-                                                )
-                                            }
+                                            Icon(
+                                                imageVector = Icons.Default.PlayArrow,
+                                                contentDescription = "Oynat",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(20.dp)
+                                            )
                                         }
                                     }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    Text(
+                                        text = item.title,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
                         }
@@ -207,43 +202,34 @@ fun ProviderHubScreen(
             // 5. Dynamic Animecix Categories Deck
             if (viewModel.categories.isNotEmpty()) {
                 item {
-                    Column(modifier = Modifier.padding(top = 10.dp, bottom = 12.dp)) {
+                    Column(modifier = Modifier.padding(top = 6.dp, bottom = 10.dp)) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 6.dp),
+                                .padding(horizontal = 18.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text(
-                                    text = "KEŞFET",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = NeonCyan,
-                                    letterSpacing = 1.sp
-                                )
-                                Text(
-                                    text = "Anime Türleri & Kategoriler",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
+                            Text(
+                                text = "Kategoriler",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
 
                             Text(
-                                text = "Tümünü Gör",
+                                text = "Tümü",
                                 fontSize = 12.sp,
-                                color = NeonMagenta,
-                                fontWeight = FontWeight.Bold,
+                                color = TextMed,
+                                fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.clickable { onExploreAllClick() }
                             )
                         }
 
                         LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.padding(vertical = 8.dp)
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(vertical = 4.dp)
                         ) {
                             items(viewModel.categories) { cat ->
                                 NeonCategoryChip(
@@ -261,44 +247,35 @@ fun ProviderHubScreen(
                 }
             }
 
-            // 6. Latest Simulcast Episodes Shelf (Son Eklenen Anime Bölümleri)
+            // 6. Latest Episodes Shelf
             item {
-                Column(modifier = Modifier.padding(vertical = 12.dp)) {
+                Column(modifier = Modifier.padding(vertical = 10.dp)) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                            .padding(horizontal = 18.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                text = "CANLI SİMULCAST",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = ElectricPink,
-                                letterSpacing = 1.sp
-                            )
-                            Text(
-                                text = "Yeni Eklenen Bölümler",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
+                        Text(
+                            text = "Yeni Bölümler",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
 
                         if (isLoading) {
                             CircularProgressIndicator(
                                 color = NeonCyan,
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(16.dp),
                                 strokeWidth = 2.dp
                             )
                         } else {
                             Text(
                                 text = "Tümü",
                                 fontSize = 12.sp,
-                                color = NeonCyan,
-                                fontWeight = FontWeight.Bold,
+                                color = TextMed,
+                                fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.clickable { onExploreAllClick() }
                             )
                         }
@@ -306,23 +283,23 @@ fun ProviderHubScreen(
 
                     if (latestEpisodes.isEmpty() && isLoading) {
                         LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             items(4) {
                                 Box(
                                     modifier = Modifier
-                                        .width(160.dp)
-                                        .height(260.dp)
-                                        .clip(RoundedCornerShape(20.dp))
+                                        .width(140.dp)
+                                        .height(210.dp)
+                                        .clip(RoundedCornerShape(16.dp))
                                         .background(Color.White.copy(alpha = 0.05f))
                                 )
                             }
                         }
                     } else {
                         LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             items(latestEpisodes, key = { "hub_ep_${it.url ?: it.name ?: it.hashCode()}_${latestEpisodes.indexOf(it)}" }) { video ->
                                 val videoUrl = video.url
@@ -330,9 +307,7 @@ fun ProviderHubScreen(
                                 MediaPosterCard(
                                     title = video.name ?: "Anime Bölümü",
                                     posterUrl = video.poster,
-                                    quality = "1080p FHD",
-                                    episodeText = if (video.episodeNumber != null) "EP ${video.episodeNumber}" else "YENİ",
-                                    rating = "9.8",
+                                    episodeText = if (video.episodeNumber != null) "${video.episodeNumber}. Bölüm" else "Yeni",
                                     isFavorite = videoUrl != null && favoriteUrls.contains(videoUrl),
                                     onFavoriteToggle = {
                                         viewModel.toggleFavorite(video)
@@ -344,7 +319,7 @@ fun ProviderHubScreen(
                                             onVideoClick(videoUrl, video.name ?: "Anime")
                                         }
                                     },
-                                    modifier = Modifier.width(160.dp)
+                                    modifier = Modifier.width(140.dp)
                                 )
                             }
                         }

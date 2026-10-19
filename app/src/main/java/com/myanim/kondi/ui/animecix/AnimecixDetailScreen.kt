@@ -176,9 +176,9 @@ fun AnimecixDetailScreen(
                 scope.launch {
                     val rawUrl = source.url
                     val resolvedUrl = viewModel.resolveUrl(rawUrl)
-                    if (resolvedUrl != null && resolvedUrl.startsWith("http")) {
+                    val urlToDownload = if (resolvedUrl != null && resolvedUrl.startsWith("http")) {
                         val lowerRawUrl = rawUrl.lowercase()
-                        val urlToDownload = if (
+                        if (
                             lowerRawUrl.contains("sibnet") || 
                             lowerRawUrl.contains("ok.ru") || 
                             lowerRawUrl.contains("odnoklassniki") || 
@@ -191,7 +191,11 @@ fun AnimecixDetailScreen(
                         } else {
                             resolvedUrl
                         }
+                    } else {
+                        rawUrl
+                    }
 
+                    if (urlToDownload.isNotBlank()) {
                         val seasonNum = activeVideoForSource?.seasonNumber ?: 1
                         val episodeNum = activeVideoForSource?.episodeNumber ?: 0
                         val animeName = anime?.title ?: "Anime"
@@ -203,7 +207,7 @@ fun AnimecixDetailScreen(
                             title = formattedTitle
                         )
                     } else {
-                        Toast.makeText(context, "Kaynak çözümlenemedi", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Kaynak bulunamadı", Toast.LENGTH_SHORT).show()
                     }
                     showSourceDialog = false
                     activeVideoForSource = null

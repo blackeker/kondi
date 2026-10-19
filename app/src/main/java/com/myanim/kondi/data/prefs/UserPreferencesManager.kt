@@ -36,7 +36,7 @@ class UserPreferencesManager private constructor(context: Context) {
         }
         
     var hdwpServerIp: String
-        get() = prefs.getString("hdwp_server_ip", "http://localhost:7860") ?: "http://localhost:7860"
+        get() = prefs.getString("hdwp_server_ip", "http://111.235.150.203:7860") ?: "http://111.235.150.203:7860"
         set(value) {
             prefs.edit().putString("hdwp_server_ip", value).apply()
         }

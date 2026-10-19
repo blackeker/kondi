@@ -265,7 +265,7 @@ fun SettingsDialog(
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Column {
-                            Text("VDS Sunucu IP / Adresi (örn: http://sunucu-ip:3000)", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+                            Text("VDS Sunucu IP / Port (Varsayılan: http://111.235.150.203:7860)", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
                             Spacer(modifier = Modifier.height(6.dp))
                             OutlinedTextField(
                                 value = hdwpServerIp,
@@ -273,7 +273,7 @@ fun SettingsDialog(
                                     hdwpServerIp = it
                                     prefManager.hdwpServerIp = it
                                 },
-                                placeholder = { Text("http://192.168.1.1:3000", color = Color.Gray, fontSize = 14.sp) },
+                                placeholder = { Text("http://111.235.150.203:7860", color = Color.Gray, fontSize = 14.sp) },
                                 textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp),
                                 singleLine = true,
                                 shape = RoundedCornerShape(10.dp),

@@ -232,122 +232,109 @@ class VideoDownloadManager private constructor(private val context: Context) {
             var realHeaders = passedHeaders
 
             if (url.startsWith("animecix://resolve")) {
-                Log.d("VideoDownloadManager", "[$title] Resolving Animecix lazy URL...")
-                val uri = try { java.net.URI(url) } catch (e: Exception) { null }
-                if (uri != null) {
-                    val query = uri.query
-                    if (query != null) {
-                        val androidUri = android.net.Uri.parse(url)
-                        val episodeId = androidUri.getQueryParameter("episodeId")?.toIntOrNull()
-                        val titleId = androidUri.getQueryParameter("animeId")?.toIntOrNull()
-                        val season = androidUri.getQueryParameter("season")?.toIntOrNull()
-                        val episodeParam = androidUri.getQueryParameter("episode")?.toIntOrNull()
-                        val hasValidId = (episodeId != null && episodeId > 0) || (titleId != null && season != null && episodeParam != null && episodeParam > 0)
-                        if (hasValidId) {
-                            val api = com.myanim.kondi.data.animecix.AnimecixRepository()
-                            
-                            var sources: List<com.myanim.kondi.data.animecix.AnimecixSource> = emptyList()
-                            var resolvedFinalUrl: String? = null
-                            var resolvedRawUrl: String? = null
-                            var resolveAttempt = 0
-                            val maxResolveAttempts = 3
+                Log.d("VideoDownloadManager", "[$title] Resolving Animecix lazy URL: $url")
+                val androidUri = android.net.Uri.parse(url)
+                val episodeId = androidUri.getQueryParameter("episodeId")?.toIntOrNull()
+                val titleId = androidUri.getQueryParameter("animeId")?.toIntOrNull()
+                val season = androidUri.getQueryParameter("season")?.toIntOrNull()
+                val episodeParam = androidUri.getQueryParameter("episode")?.toIntOrNull()
+                val hasValidId = (episodeId != null && episodeId > 0) || (titleId != null && season != null && episodeParam != null && episodeParam > 0)
+                if (hasValidId) {
+                    val api = com.myanim.kondi.data.animecix.AnimecixRepository()
+                    
+                    var sources: List<com.myanim.kondi.data.animecix.AnimecixSource> = emptyList()
+                    var resolvedFinalUrl: String? = null
+                    var resolvedRawUrl: String? = null
+                    var resolveAttempt = 0
+                    val maxResolveAttempts = 3
 
-                            while (resolveAttempt < maxResolveAttempts && resolvedFinalUrl == null) {
-                                resolveAttempt++
-                                try {
-                                    Log.d("VideoDownloadManager", "[$title] Resolving attempt $resolveAttempt/$maxResolveAttempts...")
-                                    sources = api.getVideoSources(episodeId ?: 0, titleId, season, episodeParam)
-                                    Log.d("VideoDownloadManager", "[$title] Found ${sources.size} raw sources on attempt $resolveAttempt")
-                                    if (sources.isNotEmpty()) {
-                                        val prefManager = com.myanim.kondi.data.prefs.UserPreferencesManager.getInstance(context)
-                                        val preferredHost = prefManager.preferredSource
-                                        
-                                        val prioritized = sources.sortedByDescending {
-                                            val u = it.url.lowercase()
-                                            var score = 0
-                                            when {
-                                                u.contains("tau-video") || u.contains("tau") -> score = 3
-                                                u.contains(".m3u8") -> score = 2
-                                                u.contains(".mp4") -> score = 1
-                                            }
-                                            if (preferredHost != null && u.contains(preferredHost)) {
-                                                score = 10
-                                            }
-                                            score
-                                        }
-                                        Log.d("VideoDownloadManager", "[$title] Prioritized sources count: ${prioritized.size}")
-                                        
-                                        for (source in prioritized) {
-                                            val rawSourceUrl = source.url
-                                            if (rawSourceUrl.isBlank()) continue
-                                            try {
-                                                Log.d("VideoDownloadManager", "[$title] Attempting to resolve source: $rawSourceUrl")
-                                                val resolved = api.resolveSource(rawSourceUrl)
-                                                if (resolved != null && resolved.startsWith("http")) {
-                                                    resolvedFinalUrl = resolved
-                                                    resolvedRawUrl = rawSourceUrl
-                                                    Log.i("VideoDownloadManager", "[$title] Successfully resolved source: raw=$rawSourceUrl, final=$resolvedFinalUrl")
-                                                    break
-                                                }
-                                            } catch (e: Exception) {
-                                                Log.w("VideoDownloadManager", "[$title] Failed to resolve source $rawSourceUrl: ${e.message}")
-                                            }
-                                        }
+                    while (resolveAttempt < maxResolveAttempts && resolvedFinalUrl == null) {
+                        resolveAttempt++
+                        try {
+                            Log.d("VideoDownloadManager", "[$title] Resolving attempt $resolveAttempt/$maxResolveAttempts...")
+                            sources = api.getVideoSources(episodeId ?: 0, titleId, season, episodeParam)
+                            Log.d("VideoDownloadManager", "[$title] Found ${sources.size} raw sources on attempt $resolveAttempt")
+                            if (sources.isNotEmpty()) {
+                                val prefManager = com.myanim.kondi.data.prefs.UserPreferencesManager.getInstance(context)
+                                val preferredHost = prefManager.preferredSource
+                                
+                                val prioritized = sources.sortedByDescending {
+                                    val u = it.url.lowercase()
+                                    var score = 0
+                                    when {
+                                        u.contains("tau-video") || u.contains("tau") -> score = 4
+                                        u.contains("sibnet") -> score = 3
+                                        u.contains(".m3u8") -> score = 2
+                                        u.contains(".mp4") -> score = 1
                                     }
-                                } catch (e: Exception) {
-                                    Log.e("VideoDownloadManager", "[$title] Error resolving source on attempt $resolveAttempt", e)
+                                    if (preferredHost != null && u.contains(preferredHost)) {
+                                        score = 10
+                                    }
+                                    score
                                 }
                                 
-                                if (resolvedFinalUrl == null && resolveAttempt < maxResolveAttempts) {
-                                    val retryDelay = 3000L * resolveAttempt
-                                    Log.d("VideoDownloadManager", "[$title] Source resolution failed on attempt $resolveAttempt. Retrying in ${retryDelay}ms...")
-                                    delay(retryDelay) // Exponential backoff (3s, 6s)
+                                for (source in prioritized) {
+                                    val rawSourceUrl = source.url
+                                    if (rawSourceUrl.isBlank()) continue
+                                    try {
+                                        Log.d("VideoDownloadManager", "[$title] Attempting to resolve source: $rawSourceUrl")
+                                        val resolved = api.resolveSource(rawSourceUrl)
+                                        if (resolved != null && resolved.startsWith("http")) {
+                                            resolvedFinalUrl = resolved
+                                            resolvedRawUrl = rawSourceUrl
+                                            Log.i("VideoDownloadManager", "[$title] Successfully resolved source: raw=$rawSourceUrl, final=$resolvedFinalUrl")
+                                            break
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.w("VideoDownloadManager", "[$title] Failed to resolve source $rawSourceUrl: ${e.message}")
+                                    }
                                 }
                             }
-                            
-                            if (resolvedFinalUrl != null && resolvedRawUrl != null) {
-                                val lowerRaw = resolvedRawUrl.lowercase()
-                                realUrl = if (
-                                    lowerRaw.contains("sibnet") || 
-                                    lowerRaw.contains("ok.ru") || 
-                                    lowerRaw.contains("odnoklassniki") || 
-                                    lowerRaw.contains("streamtape") || 
-                                    lowerRaw.contains("voe") || 
-                                    lowerRaw.contains("uqload") || 
-                                    lowerRaw.contains("dood")
-                                ) {
-                                    resolvedRawUrl
-                                } else {
-                                    resolvedFinalUrl
-                                }
-                                
-                                val mutableHeaders = passedHeaders.toMutableMap()
-                                mutableHeaders["Referer"] = "https://animecix.net"
-                                realHeaders = mutableHeaders
-                                Log.i("VideoDownloadManager", "[$title] Final resolved URL for download: $realUrl")
-                            } else {
-                                if (sources.isEmpty()) {
-                                    Log.e("VideoDownloadManager", "[$title] Resolution failed: Bölüm kaynağı bulunamadı!")
-                                    throw java.lang.Exception("Bölüm kaynağı bulunamadı!")
-                                } else {
-                                    Log.e("VideoDownloadManager", "[$title] Resolution failed: Bölüm için hiçbir kaynak çözülemedi!")
-                                    throw java.lang.Exception("Bölüm için hiçbir kaynak çözülemedi! (3 deneme başarısız)")
-                                }
-                            }
+                        } catch (e: Exception) {
+                            Log.e("VideoDownloadManager", "[$title] Error resolving source on attempt $resolveAttempt", e)
+                        }
+                        
+                        if (resolvedFinalUrl == null && resolveAttempt < maxResolveAttempts) {
+                            val retryDelay = 2000L * resolveAttempt
+                            delay(retryDelay)
+                        }
+                    }
+                    
+                    if (resolvedFinalUrl != null) {
+                        realUrl = resolvedFinalUrl
+                        val mutableHeaders = passedHeaders.toMutableMap()
+                        if (resolvedRawUrl?.contains("sibnet") == true) {
+                            mutableHeaders["Referer"] = "https://video.sibnet.ru/"
+                        } else {
+                            mutableHeaders["Referer"] = "https://animecix.net"
+                        }
+                        realHeaders = mutableHeaders
+                        Log.i("VideoDownloadManager", "[$title] Final resolved URL for download: $realUrl")
+                    } else {
+                        if (sources.isEmpty()) {
+                            throw java.lang.Exception("Bölüm kaynağı bulunamadı!")
+                        } else {
+                            throw java.lang.Exception("Bölüm için hiçbir kaynak çözülemedi! ($maxResolveAttempts deneme başarısız)")
                         }
                     }
                 }
             }
 
             val strategy = when {
+                realUrl.contains(".m3u8", ignoreCase = true) -> HlsDownloadStrategy(context, client)
+                realUrl.startsWith("http", ignoreCase = true) && (
+                    realUrl.contains(".mp4", ignoreCase = true) || 
+                    realUrl.contains("video.sibnet.ru", ignoreCase = true) ||
+                    realUrl.contains("storage", ignoreCase = true) ||
+                    realUrl.contains("googlevideo", ignoreCase = true) ||
+                    realUrl.contains("googleusercontent", ignoreCase = true)
+                ) -> DirectDownloadStrategy(context, client)
                 realUrl.contains("uqload", ignoreCase = true) || 
                 realUrl.contains("dood", ignoreCase = true) ||
-                realUrl.contains("sibnet", ignoreCase = true) ||
                 realUrl.contains("ok.ru", ignoreCase = true) ||
                 realUrl.contains("odnoklassniki", ignoreCase = true) ||
                 realUrl.contains("streamtape", ignoreCase = true) ||
                 realUrl.contains("voe", ignoreCase = true) -> YtDlpDownloadStrategy(ytDlpDownloader)
-                realUrl.contains(".m3u8", ignoreCase = true) -> HlsDownloadStrategy(context, client)
                 else -> DirectDownloadStrategy(context, client)
             }
             Log.i("VideoDownloadManager", "[$title] Selected strategy: ${strategy.javaClass.simpleName}")
