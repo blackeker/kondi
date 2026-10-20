@@ -12,6 +12,7 @@ import android.os.Build
 import android.content.ContentValues
 import android.os.Environment
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.myanim.kondi.data.animecix.AnimecixRepository
 import com.myanim.kondi.data.local.Download
 import com.myanim.kondi.data.local.DownloadStatus
 import com.myanim.kondi.data.local.KondiDatabase
@@ -25,7 +26,10 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
 
-class VideoDownloadManager private constructor(private val context: Context) {
+class VideoDownloadManager constructor(
+    private val context: Context,
+    private val animecixRepository: AnimecixRepository
+) : DownloadManager {
     
     companion object {
         @Volatile
@@ -35,7 +39,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
 
         fun getInstance(context: Context): VideoDownloadManager {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: VideoDownloadManager(context.applicationContext).also { INSTANCE = it }
+                INSTANCE ?: VideoDownloadManager(context.applicationContext, AnimecixRepository()).also { INSTANCE = it }
             }
         }
     }
@@ -50,8 +54,8 @@ class VideoDownloadManager private constructor(private val context: Context) {
         .writeTimeout(25, TimeUnit.SECONDS)
         .connectionPool(okhttp3.ConnectionPool(32, 5, TimeUnit.MINUTES))
         .dispatcher(okhttp3.Dispatcher().apply {
-            maxRequests = 128
-            maxRequestsPerHost = 32
+            maxRequests = 16
+            maxRequestsPerHost = 8
         })
         .build()
     
@@ -68,7 +72,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
         }
 
     private val _downloadsFlow = MutableStateFlow<List<Download>>(emptyList())
-    val downloadsFlow: StateFlow<List<Download>> = _downloadsFlow.asStateFlow()
+    override val downloadsFlow: StateFlow<List<Download>> = _downloadsFlow.asStateFlow()
 
     private var queueWorkerJob: Job? = null
 
@@ -240,11 +244,10 @@ class VideoDownloadManager private constructor(private val context: Context) {
                 val episodeParam = androidUri.getQueryParameter("episode")?.toIntOrNull()
                 val hasValidId = (episodeId != null && episodeId > 0) || (titleId != null && season != null && episodeParam != null && episodeParam > 0)
                 if (hasValidId) {
-                    val api = com.myanim.kondi.data.animecix.AnimecixRepository()
-                    
                     var sources: List<com.myanim.kondi.data.animecix.AnimecixSource> = emptyList()
                     var resolvedFinalUrl: String? = null
                     var resolvedRawUrl: String? = null
+                    val api = animecixRepository
                     var resolveAttempt = 0
                     val maxResolveAttempts = 3
 
@@ -409,25 +412,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
     }
 
     private fun getHeadersForUrl(url: String): Map<String, String> {
-        val headers = mutableMapOf<String, String>()
-        headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-        headers["X-Requested-With"] = "com.kraptor.AnimeciX"
-        
-        val uri = try { java.net.URI(url) } catch (_: Exception) { null }
-        val host = uri?.host ?: ""
-        
-        val referer = when {
-            url.contains("tau-video") || url.contains("tau") -> "https://animecix.net/"
-            url.contains("doodstream") || url.contains("dood.") -> "https://doodstream.com/"
-            url.contains("uqload") -> "https://uqload.io/"
-            url.contains("cloud.mail.ru") -> "https://cloud.mail.ru/"
-            url.contains("sibnet") -> "https://video.sibnet.ru/"
-            url.contains("ok.ru") || url.contains("odnoklassniki") -> "https://ok.ru/"
-            host.contains("animecix") -> "https://animecix.net/"
-            else -> "https://animecix.net/"
-        }
-        headers["Referer"] = referer
-        return headers
+        return getHeadersForUrlInternal(url)
     }
 
     private suspend fun updateDownloadInDb(id: String, update: (Download) -> Download) {
@@ -513,7 +498,20 @@ class VideoDownloadManager private constructor(private val context: Context) {
         }
     }
  
-    fun pauseDownload(id: String) {
+    override fun clearAllCompleted() {
+        scope.launch {
+            val completed = withContext(Dispatchers.IO) {
+                dao.getAllDownloads().firstOrNull()?.let { all ->
+                    all.filter { it.status == DownloadStatus.COMPLETED.name }
+                } ?: emptyList()
+            }
+            for (download in completed) {
+                deleteDownload(download.id)
+            }
+        }
+    }
+
+    override fun pauseDownload(id: String) {
         Log.i("VideoDownloadManager", "pauseDownload requested for ID: $id")
         pausedDownloads[id] = true
         downloadJobs[id]?.cancel()
@@ -530,7 +528,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
         }
     }
      
-    fun resumeDownload(id: String) {
+    override fun resumeDownload(id: String) {
         Log.i("VideoDownloadManager", "resumeDownload requested for ID: $id")
         pausedDownloads.remove(id)
         scope.launch {
@@ -540,7 +538,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
         }
     }
  
-    fun cancelDownload(id: String) {
+    override fun cancelDownload(id: String) {
         Log.i("VideoDownloadManager", "cancelDownload requested for ID: $id")
         downloadJobs[id]?.cancel()
         downloadJobs.remove(id)
@@ -559,7 +557,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
         }
     }
      
-    fun deleteDownload(id: String) {
+    override fun deleteDownload(id: String) {
         Log.i("VideoDownloadManager", "deleteDownload requested for ID: $id")
         scope.launch {
             val download = dao.getDownloadById(id)
@@ -669,7 +667,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
         }
     }
     
-    fun retryDownload(id: String) {
+    override fun retryDownload(id: String) {
         scope.launch {
             updateDownloadInDb(id) { it.copy(status = DownloadStatus.PENDING.name, errorMessage = null) }
             triggerQueueProcessing()
@@ -778,11 +776,11 @@ class VideoDownloadManager private constructor(private val context: Context) {
         return size
     }
     
-    fun clearImageCache(): Boolean {
+    override fun clearImageCache(): Boolean {
         return deleteFolderContents(context.cacheDir.resolve("image_cache"))
     }
     
-    fun clearStrayChunks(): Int {
+    override fun clearStrayChunks(): Int {
         val directory = getTempDirectory()
         var deletedCount = 0
         if (directory.exists()) {
@@ -804,7 +802,7 @@ class VideoDownloadManager private constructor(private val context: Context) {
         return deletedCount
     }
     
-    fun clearLogs(): Boolean {
+    override fun clearLogs(): Boolean {
         val logDir = context.getExternalFilesDir(null)?.resolve("logcat")
         val crashDir = context.getExternalFilesDir(null)?.resolve("crash_logs")
         var success = true
@@ -840,6 +838,48 @@ class VideoDownloadManager private constructor(private val context: Context) {
     }
 
     private fun sanitizeFileName(name: String): String {
-        return name.replace(Regex("[^a-zA-Z0-9]"), "_")
+        return sanitizeFileNameInternal(name)
     }
+
+    /**
+     * BroadcastReceiver'ı kayıt dışı bırakır ve kaynakları serbest bırakır.
+     * Memory leak önlemi için ViewModel veya Activity destroyed olduğunda çağrılmalıdır.
+     */
+    override fun destroy() {
+        try {
+            LocalBroadcastManager.getInstance(context).unregisterReceiver(broadcastReceiver)
+        } catch (e: Exception) {
+            Log.w("VideoDownloadManager", "BroadcastReceiver unregister failed", e)
+        }
+        scope.cancel()
+        downloadJobs.values.forEach { it.cancel() }
+        downloadJobs.clear()
+        pausedDownloads.clear()
+    }
+}
+
+internal fun sanitizeFileNameInternal(name: String): String {
+    return name.replace(Regex("[^a-zA-Z0-9]"), "_")
+}
+
+internal fun getHeadersForUrlInternal(url: String): Map<String, String> {
+    val headers = mutableMapOf<String, String>()
+    headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+    headers["X-Requested-With"] = "com.kraptor.AnimeciX"
+
+    val uri = try { java.net.URI(url) } catch (_: Exception) { null }
+    val host = uri?.host ?: ""
+
+    val referer = when {
+        url.contains("tau-video") || url.contains("tau") -> "https://animecix.net/"
+        url.contains("doodstream") || url.contains("dood.") -> "https://doodstream.com/"
+        url.contains("uqload") -> "https://uqload.io/"
+        url.contains("cloud.mail.ru") -> "https://cloud.mail.ru/"
+        url.contains("sibnet") -> "https://video.sibnet.ru/"
+        url.contains("ok.ru") || url.contains("odnoklassniki") -> "https://ok.ru/"
+        host.contains("animecix") -> "https://animecix.net/"
+        else -> "https://animecix.net/"
+    }
+    headers["Referer"] = referer
+    return headers
 }

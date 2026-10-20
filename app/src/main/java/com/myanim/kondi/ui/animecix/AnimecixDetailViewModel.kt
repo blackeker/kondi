@@ -165,18 +165,18 @@ class AnimecixDetailViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun bulkHdwpDownload(selectedEpisodes: List<AnimecixVideo>, animeName: String, context: Context) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             android.util.Log.i("HDWP_BULK", "bulkHdwpDownload başlatıldı: ${selectedEpisodes.size} bölüm, Anime=$animeName")
             
-            val validEpisodes = selectedEpisodes.filter { video ->
-                val cat = video.category?.lowercase() ?: ""
-                cat != "trailer" && cat != "opening credits" && cat != "ending credits"
-            }.sortedWith(compareBy({ it.seasonNumber ?: 1 }, { it.episodeNumber ?: 0 }))
+            val validEpisodes = withContext(Dispatchers.IO) {
+                selectedEpisodes.filter { video ->
+                    val cat = video.category?.lowercase() ?: ""
+                    cat != "trailer" && cat != "opening credits" && cat != "ending credits"
+                }.sortedWith(compareBy({ it.seasonNumber ?: 1 }, { it.episodeNumber ?: 0 }))
+            }
 
             if (validEpisodes.isEmpty()) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "İndirilecek geçerli bölüm bulunamadı.", Toast.LENGTH_SHORT).show()
-                }
+                Toast.makeText(context, "İndirilecek geçerli bölüm bulunamadı.", Toast.LENGTH_SHORT).show()
                 return@launch
             }
 
@@ -224,9 +224,7 @@ class AnimecixDetailViewModel(application: Application) : AndroidViewModel(appli
             }
 
             if (bulkItems.isEmpty()) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Bölüm linkleri oluşturulamadı.", Toast.LENGTH_SHORT).show()
-                }
+                Toast.makeText(context, "Bölüm linkleri oluşturulamadı.", Toast.LENGTH_SHORT).show()
                 return@launch
             }
 
@@ -375,11 +373,19 @@ class AnimecixDetailViewModel(application: Application) : AndroidViewModel(appli
     fun downloadSeason(episodes: List<AnimecixVideo>, seasonNumber: Int, animeName: String, context: Context) {
         val seasonEpisodes = episodes.filter { it.seasonNumber == seasonNumber }.sortedBy { it.episodeNumber }
         if (seasonEpisodes.isEmpty()) {
-            Toast.makeText(context, "Bu sezonda bölüm yok", Toast.LENGTH_SHORT).show()
+            viewModelScope.launch {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Bu sezonda bölüm yok", Toast.LENGTH_SHORT).show()
+                }
+            }
             return
         }
         
-        Toast.makeText(context, "${seasonEpisodes.size} bölüm çözümlenip kuyruğa ekleniyor...", Toast.LENGTH_SHORT).show()
+        viewModelScope.launch {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "${seasonEpisodes.size} bölüm çözümlenip kuyruğa ekleniyor...", Toast.LENGTH_SHORT).show()
+            }
+        }
         
         viewModelScope.launch {
             var addedCount = 0
@@ -395,7 +401,11 @@ class AnimecixDetailViewModel(application: Application) : AndroidViewModel(appli
     
     fun downloadAll(episodes: List<AnimecixVideo>, animeName: String, context: Context) {
         if (episodes.isEmpty()) return
-        Toast.makeText(context, "Tüm bölümler (${episodes.size}) çözümlenip kuyruğa ekleniyor...", Toast.LENGTH_SHORT).show()
+        viewModelScope.launch {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Tüm bölümler (${episodes.size}) çözümlenip kuyruğa ekleniyor...", Toast.LENGTH_SHORT).show()
+            }
+        }
         
         viewModelScope.launch {
             var addedCount = 0

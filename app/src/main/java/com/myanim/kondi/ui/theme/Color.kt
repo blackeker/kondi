@@ -2,32 +2,32 @@ package com.myanim.kondi.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Core Obsidian Palette
-val ObsidianBlack = Color(0xFF08080C)
-val ObsidianDeep = Color(0xFF0D0D14)
-val ObsidianSurface = Color(0xFF14141E)
-val ObsidianCard = Color(0xFF161622)
+// Sade, klasik renk paleti - Ergonomik ve okunabilir
+val SurfaceBackground = Color(0xFFFAFAFA) // Açık gri arka plan
+val SurfaceCard = Color(0xFFFFFFFF)       // Beyaz kart arka planı
+val SurfaceElevated = Color(0xFFF5F5F5)   // Hafif gri yüzey
 
-// Neon Accent Colors
-val NeonMagenta = Color(0xFF8A2BE2)       // Canlı Neon Eflatun
-val ElectricPink = Color(0xFFFF2E93)      // Elektrik Pembesi
-val NeonCyan = Color(0xFF00F0FF)          // Neon Camgöbeği
-val EmeraldActive = Color(0xFF00E676)     // Aktiflik Zümrüt Yeşili
-val AmberRating = Color(0xFFFFB800)       // Puanlama Altın/Kehribar Sarısı
+val Primary = Color(0xFF1A237E)           // Koyu mavi - birincil renk
+val PrimaryContainer = Color(0xFFE8EAF6)  // Açık mavi - birincil kapsayıcı
+val OnPrimary = Color(0xFFFFFFFF)         // Beyaz - birincil üzerine
 
-// Glassmorphism Surfaces & Shimmers
-val GlassSurface = Color.White.copy(alpha = 0.05f)
-val GlassSurfaceLight = Color.White.copy(alpha = 0.08f)
-val GlassBorder = Color.White.copy(alpha = 0.15f)
-val GlassBorderSubtle = Color.White.copy(alpha = 0.08f)
+val Secondary = Color(0xFF37474F)         // Koyu gri mavi - ikincil renk
+val OnSecondary = Color(0xFFFFFFFF)       // Beyaz - ikincil üzerine
 
-// Legacy compatibility
-val PureBlack = Color(0xFF000000)
-val DarkGrey = Color(0xFF111111)
-val MediumGrey = Color(0xFF333333)
-val LightGrey = Color(0xFF666666)
-val BorderGrey = Color(0xFF222222)
-val TextHigh = Color(0xFFEEEEEE)
-val TextMed = Color(0xFF9E9EA7)
-val TextLow = Color(0xFF666672)
-val White = Color(0xFFFFFFFF)
+val Background = Color(0xFFFAFAFA)        // Arka plan
+val OnBackground = Color(0xFF212121)      // Koyu gri - arka plan üzerine
+
+val Surface = Color(0xFFFFFFFF)           // Beyaz yüzey
+val OnSurface = Color(0xFF212121)         // Koyu gri - yüzey üzerine
+
+val Error = Color(0xFFB3261E)             // Kırmızı - hata
+val OnError = Color(0xFFFFFFFF)           // Beyaz - hata üzerine
+
+val Outline = Color(0xFFBDBDBD)           // Gri - kenar çizgisi
+val OutlineVariant = Color(0xFFE0E0E0)    // Açık gri - kenar varyantı
+
+val TextPrimary = Color(0xFF212121)       // Koyu gri - başlık metni
+val TextSecondary = Color(0xFF757575)     // Orta gri - ikincil metin
+val TextDisabled = Color(0xFF9E9E9E)      // Açık gri - devre dışı metin
+
+val Divider = Color(0xFFE0E0E0)           // Açık gri - ayırıcı çizgi

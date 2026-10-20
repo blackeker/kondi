@@ -21,7 +21,7 @@ import okhttp3.OkHttpClient
 class KondiApplication : Application(), ImageLoaderFactory {
     
     override fun newImageLoader(): ImageLoader {
-        val okHttpClient = NetworkUtils.getUnsafeOkHttpClientBuilder()
+        val okHttpClient = NetworkUtils.getSafeOkHttpClientBuilder()
             .addInterceptor { chain ->
                 val request = chain.request()
                 val newRequestBuilder = request.newBuilder()

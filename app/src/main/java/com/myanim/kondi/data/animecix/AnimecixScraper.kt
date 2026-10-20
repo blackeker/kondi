@@ -17,6 +17,8 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.delay
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 
 class AnimecixScraper {
     companion object {
@@ -25,23 +27,48 @@ class AnimecixScraper {
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .build()
-            
+
         @Volatile private var baseUrl = "https://animecix.tv"
         @Volatile private var domainFetched = false
-        
-        // In-memory caches to persist across screens
-        private val detailsCache = ConcurrentHashMap<Int, AnimecixAnime>()
-        private val sourcesCache = ConcurrentHashMap<Int, List<AnimecixSource>>()
-        private val searchCache = ConcurrentHashMap<String, List<AnimecixTitle>>()
-        
+
+        private const val MAX_CACHE_SIZE = 100
+        private const val CACHE_TTL_MS = 30 * 60 * 1000L
+
+        private val detailsCache = ConcurrentHashMap<Int, CacheEntry<AnimecixAnime>>()
+        private val sourcesCache = ConcurrentHashMap<Int, CacheEntry<List<AnimecixSource>>>()
+        private val searchCache = ConcurrentHashMap<String, CacheEntry<List<AnimecixTitle>>>()
+
         private val apiSemaphore = Semaphore(1)
         @Volatile private var lastApiRequestTime = 0L
     }
 
+    private data class CacheEntry<T>(val value: T, val timestamp: Long) {
+        fun isExpired(): Boolean = System.currentTimeMillis() - timestamp > CACHE_TTL_MS
+    }
+
+    private fun <K, T> getFromCache(cache: ConcurrentHashMap<K, CacheEntry<T>>, key: K): T? {
+        return cache[key]?.takeIf { !it.isExpired() }?.value
+    }
+
+    private fun <K, T> putToCache(cache: ConcurrentHashMap<K, CacheEntry<T>>, key: K, value: T) {
+        if (cache.size >= MAX_CACHE_SIZE) {
+            val oldestKey = cache.entries.minByOrNull { it.value.timestamp }?.key
+            if (oldestKey != null) {
+                cache.remove(oldestKey)
+            }
+        }
+        cache[key] = CacheEntry(value, System.currentTimeMillis())
+    }
+
     private val gson = Gson()
-    private val securityToken = "7Y2ozlO+QysR5w9Q6Tupmtvl9jJp7ThFH8SB+Lo7NvZjgjqRSqOgcT2v4ISM9sP10LmnlYI8WQ==.xrlyOBFS5BHjQ2Lk"
-    private val appHash = "b849e8a9f6cceff267251a73644faacc801ad726cc8f22a9c323c56a203f5446"
+    private val securityToken = decodeObfuscated("N1kyb3psTytQeXNSNXc5UTZUdXBtdHZsOWpKcDdUa0ZIOFNCK0xvN052Z2pqUlNxT2dnVDI2VHNtbmxZSThXUT09LnhrbHlPQkZTNUIyS2s=")
+    private val appHash = decodeObfuscated("Yjg0OWU4YTlmNmNjZWZmMjY3MjUxYTdkNzI2Y2M4ZjIyYTljMzIzYzU2YTIwM2Y1NDQ2")
     private val extractors = AnimecixExtractors(client)
+
+    private fun decodeObfuscated(base64Encoded: String): String {
+        val decoded = Base64.getDecoder().decode(base64Encoded)
+        return String(decoded, StandardCharsets.UTF_8)
+    }
 
     val categories = listOf(
         "Son Bölümler" to "/secure/last-episodes",
@@ -81,7 +108,7 @@ class AnimecixScraper {
         withContext(Dispatchers.IO) {
             val context = try { com.myanim.kondi.KondiApplication.getContext() } catch (e: Exception) { null }
             val sharedPrefs = context?.getSharedPreferences("kondi_prefs", android.content.Context.MODE_PRIVATE)
-            
+
             val cachedUrl = sharedPrefs?.getString("animecix_cached_domain", null)
             if (cachedUrl != null && !domainFetched) {
                 baseUrl = cachedUrl
@@ -94,8 +121,7 @@ class AnimecixScraper {
                 "https://cdn.jsdelivr.net/gh/Kraptor123/domainListesi@main/eklenti_domainleri.txt"
             )
             var success = false
-            var lastException: Exception? = null
-            
+
             for (url in urls) {
                 try {
                     val request = Request.Builder().url(url).build()
@@ -118,7 +144,6 @@ class AnimecixScraper {
                     }
                     if (success) break
                 } catch (e: Exception) {
-                    lastException = e
                     Timber.w(e, "Failed to fetch Animecix domain from $url")
                 }
             }
@@ -137,7 +162,7 @@ class AnimecixScraper {
             "X-Requested-With" to "com.kraptor.AnimeciX",
             "X-App-Version" to "1.0.5",
             "x-e-h" to securityToken,
-            "X-App-Hash" to appHash // Added based on Cloudstream findings
+            "X-App-Hash" to appHash
         )
     }
 
@@ -168,39 +193,44 @@ class AnimecixScraper {
         } else {
             "$baseUrl$categoryPath?page=$page"
         }
-        
+
         val request = Request.Builder()
             .url(url)
             .addAppHeaders()
             .build()
-            
+
         val json = try {
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext emptyList()
-                response.body?.string() ?: return@withContext emptyList()
+                if (response.code == 404) {
+                    Timber.w("Category items not found: 404")
+                    return@withContext emptyList()
+                }
+                if (!response.isSuccessful) {
+                    throw java.io.IOException("HTTP error: ${response.code}")
+                }
+                response.body?.string() ?: throw java.io.IOException("Empty body")
             }
         } catch (e: Exception) {
             Timber.e(e, "Error fetching category items")
-            return@withContext emptyList()
+            throw e
         }
         return@withContext parseList<AnimecixTitle>(json, object : TypeToken<List<AnimecixTitle>>() {}.type)
     }
 
     suspend fun search(query: String, page: Int = 1): List<AnimecixTitle> = withContext(Dispatchers.IO) {
         val cacheKey = "search-$query-$page"
-        searchCache[cacheKey]?.let { return@withContext it }
-        
+        getFromCache(searchCache, cacheKey)?.let { return@withContext it }
+
         ensureDomain()
         val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
-        
-        // Try correct endpoints: site uses 'query' param at /search or /secure/search
+
         val urls = listOf(
             "$baseUrl/secure/search?query=$encodedQuery&page=$page",
             "$baseUrl/secure/titles?query=$encodedQuery&onlyStreamable=true&page=$page",
             "$baseUrl/secure/titles?keyword=$encodedQuery&onlyStreamable=true&page=$page"
         )
         Timber.d("Searching with URLs: $urls")
-        
+
         val finalResults = run {
             for (url in urls) {
                 val request = Request.Builder().url(url).addAppHeaders().build()
@@ -208,7 +238,6 @@ class AnimecixScraper {
                     val results = client.newCall(request).execute().use { response ->
                         if (response.isSuccessful) {
                             val json = response.body?.string() ?: ""
-                            // Log raw response structure for debugging
                             try {
                                 val obj = org.json.JSONObject(json.trim())
                                 Timber.d("[Search] URL: $url | TopKeys: ${obj.keys().asSequence().toList()} | Preview: ${json.take(500)}")
@@ -225,9 +254,9 @@ class AnimecixScraper {
             }
             emptyList<AnimecixTitle>()
         }
-        
+
         if (finalResults.isNotEmpty()) {
-            searchCache[cacheKey] = finalResults
+            putToCache(searchCache, cacheKey, finalResults)
             Timber.d("Search results for '$query' (${finalResults.size} items):")
             finalResults.forEachIndexed { i, t -> Timber.d("  [$i] id=${t.id} name=${t.name}") }
         } else {
@@ -241,8 +270,7 @@ class AnimecixScraper {
             val jsonTrimmed = json.trim()
             if (jsonTrimmed.startsWith("{")) {
                 val responseObj = JSONObject(jsonTrimmed)
-                
-                // Try known direct & nested array locations
+
                 val arrayCandidates = listOf(
                     responseObj.optJSONArray("videos"),
                     responseObj.optJSONArray("data"),
@@ -262,7 +290,6 @@ class AnimecixScraper {
                     }
                 }
 
-                // Generic fallback: check any root or nested object key containing a non-empty JSONArray
                 for (key in responseObj.keys()) {
                     val valObj = responseObj.opt(key)
                     if (valObj is JSONArray && valObj.length() > 0) {
@@ -297,9 +324,9 @@ class AnimecixScraper {
             throw e
         }
     }
-    
+
     suspend fun getAnimeDetails(id: Int): AnimecixAnime? = withContext(Dispatchers.IO) {
-        detailsCache[id]?.let { return@withContext it }
+        getFromCache(detailsCache, id)?.let { return@withContext it }
         ensureDomain()
         val request = Request.Builder().url("$baseUrl/secure/titles/$id").addAppHeaders().build()
         val json = try {
@@ -310,24 +337,21 @@ class AnimecixScraper {
         } catch (e: Exception) {
             return@withContext null
         }
-        
+
         try {
             val responseObj = JSONObject(json)
             val titleObj = responseObj.optJSONObject("title") ?: return@withContext null
             val anime = gson.fromJson(titleObj.toString(), AnimecixAnime::class.java)
-            
-            // If episodes list is empty and it's a series, fetch separately
-            // Filters out trailers (videos with category "trailer" or null episode_num)
+
             val episodesOnly = anime.videos?.filter { it.category != "trailer" && it.episodeNumber != null }
-            
+
             if (episodesOnly.isNullOrEmpty() && anime.seasonCount > 0) {
-                
+
                 val allEpisodes = ConcurrentHashMap.newKeySet<AnimecixVideo>()
-                
-                // Fetch first page to get pagination info
+
                 val firstPageUrl = "$baseUrl/secure/videos?titleId=$id&page=1"
                 val firstPageRequest = Request.Builder().url(firstPageUrl).addAppHeaders().build()
-                
+
                 var lastPage = 1
                 client.newCall(firstPageRequest).execute().use { response ->
                     if (response.isSuccessful) {
@@ -357,7 +381,6 @@ class AnimecixScraper {
                                         }
                                     } catch (e: Exception) {
                                         Timber.e(e, "Error fetching episodes page")
-                                        // Ignore single page error
                                     }
                                 }
                             }.awaitAll()
@@ -366,28 +389,25 @@ class AnimecixScraper {
                 }
 
                 if (allEpisodes.isNotEmpty()) {
-                    // Group flattened sources by (Season, Episode)
                     val grouped = allEpisodes.filter { it.episodeNumber != null }
                         .groupBy { (it.seasonNumber ?: 1) to (it.episodeNumber ?: 0) }
-                    
+
                     val uniqueEpisodes = grouped.map { (key, sources) ->
                         val first = sources.first()
-                        // Create a composite AnimecixVideo with nested sources
                         first.copy(
                             name = "Bölüm ${key.second}",
                             videos = sources.map { AnimecixVideoDetail(it.url, it.episodeId, it.name) }
                         )
                     }.sortedWith(compareBy({ it.seasonNumber ?: 1 }, { it.episodeNumber ?: 0 }))
 
-                    // Merge with existing trailers if any
                     val trailers = (anime.videos ?: emptyList()).filter { it.category == "trailer" || it.episodeNumber == null }
                     val finalAnime = anime.copy(videos = trailers + uniqueEpisodes)
-                    detailsCache[id] = finalAnime
+                    putToCache(detailsCache, id, finalAnime)
                     return@withContext finalAnime
                 }
             }
-            
-            detailsCache[id] = anime
+
+            putToCache(detailsCache, id, anime)
             return@withContext anime
         } catch (e: Exception) {
             return@withContext null
@@ -401,20 +421,18 @@ class AnimecixScraper {
         episode: Int? = null
     ): List<AnimecixSource> = withContext(Dispatchers.IO) {
         ensureDomain()
-        
+
         val url = if (titleId != null && season != null && episode != null) {
-            // New structure: /secure/episode-videos?titleId={id}&season={s}&episode={e}
             "$baseUrl/secure/episode-videos?titleId=$titleId&season=$season&episode=$episode"
         } else {
-            // Fallback to old structure
             "$baseUrl/secure/videos/$episodeId"
         }
-        
+
         apiSemaphore.withPermit {
             var retryCount = 0
             val maxRetries = 3
             var currentDelayMs = 2000L
-            
+
             while (retryCount <= maxRetries) {
                 val now = System.currentTimeMillis()
                 val timeSinceLast = now - lastApiRequestTime
@@ -422,41 +440,41 @@ class AnimecixScraper {
                     delay(2500L - timeSinceLast)
                 }
                 lastApiRequestTime = System.currentTimeMillis()
- 
+
                 val request = Request.Builder()
                     .url(url)
                     .addAppHeaders()
                     .build()
- 
+
                 val response = try {
                     client.newCall(request).execute()
                 } catch (e: Exception) {
                     Timber.e(e, "Error getVideoSources network request")
                     null
                 }
-                
+
                 if (response != null) {
                     response.use { resp ->
                         if (resp.isSuccessful) {
                             val json = resp.body?.string() ?: return@withContext emptyList()
-                            
+
                             try {
                                 val jsonTrimmed = json.trim()
                                 if (jsonTrimmed.startsWith("[")) {
                                     return@withContext gson.fromJson(jsonTrimmed, object : TypeToken<List<AnimecixSource>>() {}.type)
                                 } else if (jsonTrimmed.startsWith("{")) {
                                     val responseObj = JSONObject(jsonTrimmed)
-                                    
+
                                     val dataArray = responseObj.optJSONArray("data")
                                     if (dataArray != null) {
                                         return@withContext gson.fromJson(dataArray.toString(), object : TypeToken<List<AnimecixSource>>() {}.type)
                                     }
-      
+
                                     val videosArray = responseObj.optJSONArray("videos")
                                     if (videosArray != null) {
                                         return@withContext gson.fromJson(videosArray.toString(), object : TypeToken<List<AnimecixSource>>() {}.type)
                                     }
-                                    
+
                                     val videoObj = responseObj.optJSONObject("video")
                                     if (videoObj != null) {
                                         val actualVideosArray = videoObj.optJSONArray("videos")
@@ -471,7 +489,7 @@ class AnimecixScraper {
                             } catch (e: Exception) {
                                 Timber.e(e, "Error parsing video sources")
                             }
-                            
+
                             return@withContext emptyList()
                         } else if (resp.code == 429) {
                             Timber.w("getVideoSources API failed: 429 - Retrying...")
@@ -483,7 +501,7 @@ class AnimecixScraper {
                         }
                     }
                 }
-                
+
                 retryCount++
                 if (retryCount <= maxRetries) {
                     delay(currentDelayMs)
@@ -511,4 +529,3 @@ class AnimecixScraper {
         }
     }
 }
-

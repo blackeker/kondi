@@ -47,6 +47,12 @@ data class AnimecixVideo(
 ) {
     val url: String? get() = directUrl ?: videos?.firstOrNull()?.url
     val episodeId: Int? get() = directEpisodeId ?: videos?.firstOrNull()?.episodeId
+    
+    val safeName: String get() = name ?: "Bilinmeyen"
+    val safePoster: String? get() = poster
+    val safeEpisodeNumber: Int get() = episodeNumber ?: 0
+    val safeSeasonNumber: Int get() = seasonNumber ?: 1
+    val safeCategory: String get() = category ?: ""
 }
 
 data class AnimecixVideoDetail(
