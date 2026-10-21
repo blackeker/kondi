@@ -1,6 +1,7 @@
 package com.myanim.kondi.data.backup
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import com.google.android.gms.auth.GoogleAuthUtil
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -36,7 +37,16 @@ class GoogleDriveBackupManager(private val context: Context) {
     companion object {
         private const val TAG = "GDriveBackup"
         private const val BACKUP_FILENAME = "kondi_backup.json"
-        
+
+        /**
+         * Yedeğe ALINMAMASI gereken tercih anahtarları.
+         *
+         * `hdwp_target_phone` kullanıcının WhatsApp numarasıdır (kişisel veri).
+         * Tüm tercihler olduğu gibi yedeklenirse bu numara açık metin olarak
+         * Google Drive'a yazılır. Bu anahtarlar yedekten çıkarılır.
+         */
+        private val EXCLUDED_PREF_KEYS = setOf("hdwp_target_phone")
+
         // We use drive.appdata scope which targets the hidden appDataFolder in Google Drive
         private val DRIVE_SCOPE = Scope("https://www.googleapis.com/auth/drive.appdata")
     }
@@ -78,7 +88,9 @@ class GoogleDriveBackupManager(private val context: Context) {
         val sharedPrefs = context.getSharedPreferences("kondi_user_prefs", Context.MODE_PRIVATE)
         val settings = mutableMapOf<String, String>()
         sharedPrefs.all.forEach { (key, value) ->
-            settings[key] = value.toString()
+            // Hassas anahtarlar (telefon numarası gibi) yedeğe dahil edilmez.
+            if (key in EXCLUDED_PREF_KEYS) return@forEach
+            settings[key] = encodeSetting(value)
         }
 
         val payload = BackupPayload(favorites, watchlist, history, settings)
@@ -92,6 +104,9 @@ class GoogleDriveBackupManager(private val context: Context) {
         try {
             executeBackupFlow(token, backupContent)
             true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // İptal edilmiş yedekleme yeniden denenmemeli.
+            throw e
         } catch (e: Exception) {
             val is403 = e is IOException && e.message?.contains("403") == true
             if (is403) {
@@ -145,17 +160,71 @@ class GoogleDriveBackupManager(private val context: Context) {
             val sharedPrefs = context.getSharedPreferences("kondi_user_prefs", Context.MODE_PRIVATE)
             val editor = sharedPrefs.edit()
             payload.settings.forEach { (key, value) ->
-                when {
-                    value == "true" || value == "false" -> editor.putBoolean(key, value.toBoolean())
-                    value.toIntOrNull() != null -> editor.putInt(key, value.toInt())
-                    else -> editor.putString(key, value)
-                }
+                // Hassas anahtarlar yedekte bulunmamalı; yine de korunuyor.
+                if (key in EXCLUDED_PREF_KEYS) return@forEach
+                applySetting(editor, key, value)
             }
             editor.apply()
             true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Restore failed", e)
             false
+        }
+    }
+
+    /**
+     * Bir tercih değerini tip etiketiyle kodlar.
+     * Örnek: true -> "boolean:true", 6 -> "int:6", "abc" -> "string:abc"
+     *
+     * Tip etiketi olmadan yalnızca değer saklanırsa geri yüklemede tip tahmini
+     * yapılmak zorunda kalır ve yanlış tip yazılırsa uygulama daha sonra
+     * ClassCastException ile çöker. Etiket sayesinde tip kaybolmaz.
+     */
+    private fun encodeSetting(value: Any?): String {
+        return when (value) {
+            is Boolean -> "boolean:$value"
+            is Int -> "int:$value"
+            is Long -> "long:$value"
+            is Float -> "float:$value"
+            // SharedPreferences Double tutmadığı için string olarak saklanır.
+            is Double -> "string:$value"
+            null -> "string:"
+            else -> "string:$value"
+        }
+    }
+
+    /**
+     * Yedekten gelen değeri doğru tipte geri yazar.
+     * Eski (tip etiketi olmayan) yedekler de desteklenir.
+     */
+    private fun applySetting(
+        editor: SharedPreferences.Editor,
+        key: String,
+        rawValue: String
+    ) {
+        val separator = rawValue.indexOf(':')
+        if (separator > 0) {
+            val type = rawValue.substring(0, separator)
+            val value = rawValue.substring(separator + 1)
+            when (type) {
+                "boolean" -> editor.putBoolean(key, value.toBoolean())
+                "int" -> value.toIntOrNull()?.let { editor.putInt(key, it) }
+                    ?: editor.putString(key, value)
+                "long" -> value.toLongOrNull()?.let { editor.putLong(key, it) }
+                    ?: editor.putString(key, value)
+                "float" -> value.toFloatOrNull()?.let { editor.putFloat(key, it) }
+                    ?: editor.putString(key, value)
+                else -> editor.putString(key, value)
+            }
+            return
+        }
+        // Eski format: tip tahmini yapılır.
+        when {
+            rawValue == "true" || rawValue == "false" -> editor.putBoolean(key, rawValue.toBoolean())
+            rawValue.toIntOrNull() != null -> editor.putInt(key, rawValue.toInt())
+            else -> editor.putString(key, rawValue)
         }
     }
 

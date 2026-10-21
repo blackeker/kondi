@@ -1,0 +1,22 @@
+{
+  "workspace": "C:\\Users\\keke\\Desktop\\projeler\\kondi",
+  "projectName": "kondi",
+  "totalTokens": 55501678,
+  "promptTokens": 21613734,
+  "completionTokens": 122130,
+  "totalCostUsd": 10.990051,
+  "eventCount": 494,
+  "byModel": {
+    "minimax/minimax-m3.1-flash:free": {
+      "tokens": 55501678,
+      "costUsd": 10.990051,
+      "calls": 494,
+      "promptTokens": 33709695,
+      "completionTokens": 47285
+    }
+  },
+  "firstActivity": "2026-10-20T21:26:29.029Z",
+  "lastActivity": "2026-10-21T12:52:17.708Z",
+  "totalPromptTokens": 33718370,
+  "totalCompletionTokens": 47444
+}

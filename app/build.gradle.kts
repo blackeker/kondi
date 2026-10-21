@@ -22,7 +22,35 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            // Release imzası: Gerçek bir keystore yoksa debug anahtarı ile imzalamak yayın
+            // güvenliği açığıdır (APK değiştirilebilir, Play'e yüklenemez).
+            // Keystore tanımlıysa onu kullan, değilse açık uyarı ver.
+            val releaseStorePath: String? = providers.gradleProperty("KONDI_KEYSTORE_PATH").orNull
+                ?: System.getenv("KONDI_KEYSTORE_PATH")
+            val releaseStorePassword: String? = providers.gradleProperty("KONDI_KEYSTORE_PASSWORD").orNull
+                ?: System.getenv("KONDI_KEYSTORE_PASSWORD")
+            val releaseKeyAlias: String? = providers.gradleProperty("KONDI_KEY_ALIAS").orNull
+                ?: System.getenv("KONDI_KEY_ALIAS")
+            val releaseKeyPassword: String? = providers.gradleProperty("KONDI_KEY_PASSWORD").orNull
+                ?: System.getenv("KONDI_KEY_PASSWORD")
+
+            if (releaseStorePath != null && releaseStorePassword != null &&
+                releaseKeyAlias != null && releaseKeyPassword != null
+            ) {
+                signingConfig = signingConfigs.create("release") {
+                    storeFile = file(releaseStorePath)
+                    storePassword = releaseStorePassword
+                    keyAlias = releaseKeyAlias
+                    keyPassword = releaseKeyPassword
+                }
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+                logger.warn(
+                    "KONDİ: Release keystore tanımlı değil (KONDI_KEYSTORE_PATH, KONDI_KEYSTORE_PASSWORD, " +
+                        "KONDI_KEY_ALIAS, KONDI_KEY_PASSWORD). Release derlemesi debug anahtarıyla imzalanıyor - " +
+                        "BU YAYINLANMA İÇİN UYGUN DEĞİLDİR."
+                )
+            }
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -47,9 +75,30 @@ android {
         }
     }
     lint {
-        checkReleaseBuilds = false
+        checkReleaseBuilds = true
         abortOnError = false
     }
+    testOptions {
+        unitTests {
+            // android.util.Log / Timber gibi Android API'leri saf unit testlerde
+            // "not mocked" hatası yerine stub döndürsün.
+            isReturnDefaultValues = true
+            // Robolectric tabanlı testler kaynaklara (assets/resources) ihtiyaç duyar.
+            isIncludeAndroidResources = true
+        }
+    }
+
+    sourceSets {
+        // Room'un ürettiği şema JSON'ları migration testlerinde kullanılabilsin.
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+}
+
+ksp {
+    // Room şema JSON'ları dışa aktarılır: migration testleri yazılabilir ve
+    // migration hataları CI'da yakalanabilir.
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.incremental", "true")
 }
 
 dependencies {
@@ -109,6 +158,9 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation("org.json:json:20231013")
+    // Deterministik coroutine testleri (runTest, StandardTestDispatcher) için.
+    // "delay(100) ile bekle" tekniği yerine bunun kullanılması gerekir.
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

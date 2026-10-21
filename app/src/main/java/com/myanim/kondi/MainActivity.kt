@@ -15,10 +15,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.myanim.kondi.data.prefs.UserPreferencesManager
 import com.myanim.kondi.ui.animecix.DetailScreen
 import com.myanim.kondi.ui.animecix.HomeScreen
 import com.myanim.kondi.ui.download.StorageTab
 import com.myanim.kondi.ui.navigation.*
+import com.myanim.kondi.ui.player.LocalVideoPlayerScreen
+import com.myanim.kondi.ui.settings.SettingsScreen
 import com.myanim.kondi.ui.theme.KondiTheme
 import com.myanim.kondi.util.ExternalPlayerHelper
 import android.content.Context
@@ -96,7 +99,10 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onStorageClick = { navController.navigate(StorageDestination) },
-                            onSettingsClick = {}
+                            onSettingsClick = { navController.navigate(SettingsDestination) },
+                            onPlayDownload = { path, title ->
+                                navController.navigate(LocalPlayerDestination(path, title))
+                            }
                         )
                     }
 
@@ -117,6 +123,23 @@ class MainActivity : ComponentActivity() {
                         StorageTab(
                             modifier = Modifier.fillMaxSize(),
                             onClose = { navController.popBackStack() }
+                        )
+                    }
+
+                    composable<SettingsDestination> {
+                        SettingsScreen(
+                            prefs = remember { UserPreferencesManager.getInstance(context) },
+                            onStorageClick = { navController.navigate(StorageDestination) },
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+
+                    composable<LocalPlayerDestination> { backStackEntry ->
+                        val target = backStackEntry.toRoute<LocalPlayerDestination>()
+                        LocalVideoPlayerScreen(
+                            mediaUri = target.path,
+                            title = target.title.ifBlank { "Video" },
+                            onBack = { navController.popBackStack() }
                         )
                     }
                 }

@@ -193,7 +193,10 @@ class VideoDownloadManager constructor(
         scope.launch {
             Log.i("VideoDownloadManager", "[$title] startDownload request received: url=$url, wifiOnly=$wifiOnly, source=$source")
             val rawTitle = if (title.endsWith(".mp4", ignoreCase = true)) title.substringBeforeLast(".mp4") else title
-            val cleanTitle = if (forceDisplayName) sanitizeFileName(rawTitle) else rawTitle.take(20)
+            // Başlık her zaman sanitize EDİLMELİ: aksi halde "/" veya ".." içeren bir anime adı
+            // beklenmedik bir dizine yazılabilir (path traversal) veya indirme hiç başlamaz.
+            val sanitizedTitle = sanitizeFileName(rawTitle)
+            val cleanTitle = (if (forceDisplayName) sanitizedTitle else sanitizedTitle.take(20)).ifBlank { "video" }
             val fileName = "$cleanTitle$extension"
             val file = File(directory, fileName)
         
@@ -859,7 +862,10 @@ class VideoDownloadManager constructor(
 }
 
 internal fun sanitizeFileNameInternal(name: String): String {
-    return name.replace(Regex("[^a-zA-Z0-9]"), "_")
+    // Tek doğruluk kaynağı: DownloadUtils.sanitizeFileName.
+    // Önceki uygulama (Regex("[^a-zA-Z0-9]")) Türkçe ve Japonca karakterleri de "_" yapıyordu;
+    // anime uygulaması için bu veri kaybıydı. Artık Unicode korunur, yalnızca yasaklı karakterler temizlenir.
+    return DownloadUtils.sanitizeFileName(name)
 }
 
 internal fun getHeadersForUrlInternal(url: String): Map<String, String> {
@@ -871,12 +877,14 @@ internal fun getHeadersForUrlInternal(url: String): Map<String, String> {
     val host = uri?.host ?: ""
 
     val referer = when {
-        url.contains("tau-video") || url.contains("tau") -> "https://animecix.net/"
-        url.contains("doodstream") || url.contains("dood.") -> "https://doodstream.com/"
-        url.contains("uqload") -> "https://uqload.io/"
-        url.contains("cloud.mail.ru") -> "https://cloud.mail.ru/"
-        url.contains("sibnet") -> "https://video.sibnet.ru/"
-        url.contains("ok.ru") || url.contains("odnoklassniki") -> "https://ok.ru/"
+        // Sıra önemli: önce daha spesifik eşleşmeler denenir.
+        // (Eski sırada "tau" kontrolü "tau-video" dalını her zaman gölgeliyordu.)
+        url.contains("doodstream") || url.contains("dood.") || host.contains("dood") -> "https://doodstream.com/"
+        url.contains("uqload") || host.contains("uqload") -> "https://uqload.io/"
+        url.contains("cloud.mail.ru") || host.contains("mail.ru") -> "https://cloud.mail.ru/"
+        url.contains("sibnet") || host.contains("sibnet") -> "https://video.sibnet.ru/"
+        url.contains("ok.ru") || url.contains("odnoklassniki") || host.contains("ok.ru") -> "https://ok.ru/"
+        url.contains("tau-video") || host.contains("tau") -> "https://animecix.net/"
         host.contains("animecix") -> "https://animecix.net/"
         else -> "https://animecix.net/"
     }

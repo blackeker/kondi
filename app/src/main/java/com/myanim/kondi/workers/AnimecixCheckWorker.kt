@@ -12,6 +12,7 @@ import androidx.work.WorkerParameters
 import com.myanim.kondi.MainActivity
 import com.myanim.kondi.R
 import com.myanim.kondi.data.animecix.AnimecixRepository
+import timber.log.Timber
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -54,20 +55,24 @@ class AnimecixCheckWorker(appContext: Context, workerParams: WorkerParameters) :
                     if (matchedFav != null) {
                         val episodeKey = "${matchedFav.title}_s${ep.seasonNumber ?: 1}_e${ep.episodeNumber ?: 1}"
                         if (!notifiedSet.contains(episodeKey)) {
-                            notifiedSet.add(episodeKey)
-                            notifiedAny = true
-
                             val seasonText = if ((ep.seasonNumber ?: 1) > 1) "${ep.seasonNumber}. Sezon " else ""
                             val episodeText = "${ep.episodeNumber ?: 1}. Bölüm"
                             val notifTitle = "Takip Ettiğin Anime: ${matchedFav.title}"
                             val notifMessage = "$seasonText$episodeText yayınlandı! İzlemek için tıkla."
 
-                            sendNotification(
+                            // Anahtar YALNIZCA bildirim gerçekten iletildiğinde işaretlenir.
+                            // Aksi halde (ör. Android 13+ bildirim izni yoksa) bölüm
+                            // "bildirilmiş" sayılır ve kullanıcı hiçbir zaman uyarı almaz.
+                            val posted = sendNotification(
                                 title = notifTitle,
                                 message = notifMessage,
                                 animeId = matchedFav.animeId ?: ep.animeId,
                                 url = ep.directUrl ?: ""
                             )
+                            if (posted) {
+                                notifiedSet.add(episodeKey)
+                                notifiedAny = true
+                            }
                         }
                     }
                 }
@@ -87,15 +92,18 @@ class AnimecixCheckWorker(appContext: Context, workerParams: WorkerParameters) :
                 }
             }
 
-            // Temizlik: max 100 anahtar sakla
+            // Temizlik: max 100 anahtar sakla (deterministik sıralama ile)
             if (notifiedSet.size > 150) {
-                val trimmed = notifiedSet.toList().takeLast(100).toSet()
+                val trimmed = notifiedSet.sorted().takeLast(100).toSet()
                 sharedPrefs.edit().putStringSet(KEY_NOTIFIED_EPISODES, trimmed).apply()
             } else if (notifiedAny) {
                 sharedPrefs.edit().putStringSet(KEY_NOTIFIED_EPISODES, notifiedSet).apply()
             }
 
             Result.success()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // İptal edilmiş iş yeniden denenmemeli; WorkManager bunu kendisi yönetir.
+            throw e
         } catch (e: Exception) {
             if (runAttemptCount < 3) {
                 Result.retry()
@@ -105,7 +113,11 @@ class AnimecixCheckWorker(appContext: Context, workerParams: WorkerParameters) :
         }
     }
 
-    private fun sendNotification(title: String, message: String, animeId: Int?, url: String) {
+    /**
+     * Bildirimi iletir. Bildirim verilemezse false döner; çağıran taraf bölümü
+     * "bildirilmiş" olarak işaretlemez (aksi halde kullanıcı uyarıyı kaçırır).
+     */
+    private fun sendNotification(title: String, message: String, animeId: Int?, url: String): Boolean {
         val notificationManager =
             applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -149,6 +161,16 @@ class AnimecixCheckWorker(appContext: Context, workerParams: WorkerParameters) :
             .setAutoCancel(true)
             .build()
 
-        notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+        return try {
+            notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+            true
+        } catch (e: SecurityException) {
+            // Android 13+ POST_NOTIFICATIONS izni verilmemiş olabilir.
+            Timber.w(e, "Bildirim gönderilemedi (izin eksik olabilir)")
+            false
+        } catch (e: Exception) {
+            Timber.e(e, "Bildirim gönderilemedi")
+            false
+        }
     }
 }

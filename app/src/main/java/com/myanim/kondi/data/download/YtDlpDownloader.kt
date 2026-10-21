@@ -21,12 +21,14 @@ class YtDlpDownloader {
      */
     suspend fun getInfo(url: String): VideoInfo? = withContext(Dispatchers.IO) {
         try {
-            val request = YoutubeDLRequest(url)
-            // Fetch info without downloading
-            request.addOption("--dump-json")
-            val response = YoutubeDL.getInstance().execute(request, null, null)
+            // NOT: Önceden burada ayrıca "--dump-json" ile bir execute() çağrısı yapılıyordu
+            // ve sonucu TAMAMEN ATILIYORDU. Bu, her indirmede aynı sayfanın iki kez
+            // çözülmesine (çift ağ trafiği + çift CPU) yol açıyordu.
             val info = YoutubeDL.getInstance().getInfo(url)
             return@withContext info
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // İptal edilmiş istek hataya dönüştürülmemeli.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get info for $url: ${e.message}", e)
             return@withContext null

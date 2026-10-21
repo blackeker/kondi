@@ -107,6 +107,9 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
             } catch (e: Exception) {
                 if (e is CancellationException || e is PausedException) throw e
                 Log.w(TAG, "[$title] Multi-chunk download failed (${e.message}), falling back to Single-Thread download...")
+                // Yarım kalan chunk dosyaları diskte yer kaplamasın ve
+                // "chunk0" gibi geçici dosyalar yanlışlıkla birleştirilmesin.
+                cleanupChunkFiles(file, numChunks)
                 downloadSingleThread(title, url, file, headers, supportsRange, onProgress)
             }
             multiSuccess
@@ -115,13 +118,26 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
         }
     }
 
+    /**
+     * Çok parçalı indirmeden artık kalan geçici chunk dosyalarını siler.
+     * Aksi halde disk dolabilir ve geçici dosyalar yanlışlıkla birleştirilebilir.
+     */
+    private fun cleanupChunkFiles(file: File, numChunks: Int) {
+        val parentDir = file.parentFile ?: file.absoluteFile.parentFile ?: return
+        for (i in 0 until numChunks) {
+            val cf = File(parentDir, "${file.name}.chunk$i")
+            if (cf.exists() && !cf.delete()) {
+                Log.w(TAG, "Could not delete leftover chunk file: ${cf.name}")
+            }
+        }
+    }
+
     private suspend fun downloadMultiChunk(
         title: String, url: String, file: File,
         headers: Map<String, String>, totalSize: Long,
         numChunks: Int,
         onProgress: (Int, Long, Long) -> Unit
-    ) = coroutineScope {
-        val parentDir = file.parentFile ?: file.absoluteFile.parentFile ?: File(".")
+    ) = coroutineScope {        val parentDir = file.parentFile ?: file.absoluteFile.parentFile ?: File(".")
         parentDir.mkdirs()
         val chunkSize = totalSize / numChunks
         val chunkFiles = (0 until numChunks).map { File(parentDir, "${file.name}.chunk$it") }
@@ -180,9 +196,32 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
                                 .build()
 
                             downloadClient.newCall(req).execute().use { resp ->
-                                if (!resp.isSuccessful && resp.code != 206) {
-                                    Log.e(TAG, "[$title] Chunk $i request failed: HTTP ${resp.code}")
-                                    throw Exception("Chunk$i HTTP ${resp.code}")
+                                // Range isteğine sunucu 206 dönmeli. 200 dönmesi sunucunun Range'i
+                                // yok saydığı anlamına gelir ve gövde 0. bayttan itibaren gelir;
+                                // bu chunk'a append edilirse dosya sessizce BOZULUR.
+                                if (resp.code != 206) {
+                                    Log.e(TAG, "[$title] Chunk $i expected HTTP 206 but got ${resp.code}. Range not honoured.")
+                                    throw Exception("Chunk$i expected HTTP 206, got ${resp.code}")
+                                }
+                                // Content-Range doğrulaması: sunucu istenen aralıktan farklı bir parça
+                                // dönerse (offset kayması) veri yanlış yere yazılır.
+                                val contentRange = resp.header("Content-Range")
+                                if (contentRange != null) {
+                                    // "bytes 100-200/1000" veya "bytes 100-200/*"
+                                    val raw = contentRange.trim()
+                                    val spaceIndex = raw.indexOf(' ')
+                                    val rangePart = if (
+                                        spaceIndex > 0 && raw.substring(0, spaceIndex).equals("bytes", ignoreCase = true)
+                                    ) {
+                                        raw.substring(spaceIndex + 1)
+                                    } else {
+                                        raw
+                                    }.substringBefore('/')
+                                    val rangeStart = rangePart.substringBefore('-').trim().toLongOrNull()
+                                    if (rangeStart == null || rangeStart != actualStart) {
+                                        Log.e(TAG, "[$title] Chunk $i Content-Range mismatch: '$contentRange' (expected start $actualStart)")
+                                        throw Exception("Chunk$i Content-Range mismatch: $contentRange")
+                                    }
                                 }
                                 val body = resp.body ?: throw Exception("Chunk$i null body")
                                 Log.d(TAG, "[$title] Chunk $i connected: HTTP ${resp.code}, expected content length: ${body.contentLength()}")
@@ -283,6 +322,13 @@ class DirectDownloadStrategy(private val context: android.content.Context, priva
             if (file.exists()) file.delete()
             val success = tempMerge.renameTo(file)
             if (success) {
+                // Bütünlük kontrolü: birleştirilen dosya beklenen boyutta olmalı.
+                val mergedSize = file.length()
+                if (mergedSize != totalSize) {
+                    Log.e(TAG, "[$title] Merge size mismatch: expected $totalSize bytes, got $mergedSize")
+                    file.delete()
+                    throw Exception("Merge size mismatch: expected $totalSize, got $mergedSize")
+                }
                 Log.i(TAG, "[$title] Merged successfully and renamed target file. Size: ${file.length()} bytes.")
             } else {
                 throw Exception("Failed to rename merging temp file to target path")

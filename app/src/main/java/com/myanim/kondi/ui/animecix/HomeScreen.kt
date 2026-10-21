@@ -14,10 +14,12 @@ import android.util.Log
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.myanim.kondi.data.animecix.AnimecixTitle
@@ -34,7 +36,9 @@ fun HomeScreen(
     onAnimeClick: (Int) -> Unit,
     onVideoClick: (String, String) -> Unit,
     onStorageClick: () -> Unit,
-    onSettingsClick: () -> Unit = {}
+    onSettingsClick: () -> Unit = {},
+    /** İndirilen yerel videoyu oynatıcıda açar. */
+    onPlayDownload: (path: String, title: String) -> Unit = { _, _ -> }
 ) {
     val episodes by viewModel.latestEpisodes.collectAsStateWithLifecycle()
     val watchHistory by viewModel.watchHistory.collectAsStateWithLifecycle()
@@ -59,12 +63,36 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "Kondi",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = OnSurface
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(HeroGradient),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "K",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Kondi",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = OnSurface
+                            )
+                            Text(
+                                text = "Anime & İndirme",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
                 },
                 actions = {
                     IconButton(onClick = onStorageClick) {
@@ -74,7 +102,15 @@ fun HomeScreen(
                             tint = OnSurface
                         )
                     }
-                    IconButton(onClick = onSettingsClick) {
+                    IconButton(
+                        onClick = {
+                            // Ayarlar sekmesine geç. Dış navigasyon "Uygulama Ayarları"
+                            // listesinden yapılır; burada çift yönlendirme olmasın.
+                            selectedTab = 4
+                            searchQuery = ""
+                            viewModel.clearSearch()
+                        }
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Ayarlar",
@@ -88,14 +124,15 @@ fun HomeScreen(
             )
         },
         bottomBar = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .background(SurfaceCard)
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = SurfaceCard,
+                shadowElevation = 12.dp
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -156,7 +193,8 @@ fun HomeScreen(
                     onAnimeClick = onAnimeClick
                 )
                 3 -> DownloadsTab(
-                    onItemClick = { Log.d("HomeScreen", "İndirme detayına tıklandı") }
+                    onItemClick = { Log.d("HomeScreen", "İndirme detayına tıklandı") },
+                    onPlay = { item -> onPlayDownload(item.filePath, item.title) }
                 )
                 4 -> SettingsTab(
                     onStorageClick = { showStorage = true },
@@ -194,6 +232,14 @@ fun HomeTab(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp)
             ) {
+                // Hero banner
+                item {
+                    HeroBanner(
+                        episodeCount = episodes.size,
+                        historyCount = watchHistory.size
+                    )
+                }
+
                 // Continue Watching
                 if (watchHistory.isNotEmpty()) {
                     item {
@@ -244,6 +290,111 @@ fun HomeTab(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Ana ekranın en üstündeki marka banner'ı.
+ * Marka gradyanı + canlı istatistik kutucukları ile ekranı zenginleştirir.
+ */
+@Composable
+private fun HeroBanner(
+    episodeCount: Int,
+    historyCount: Int
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(HeroGradient)
+            .padding(20.dp)
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.20f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Anime'ler keşfet",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Bölümleri takip et, tek dokunuşla indir",
+                        color = Color.White.copy(alpha = 0.80f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                HeroStat(
+                    icon = Icons.Default.Movie,
+                    value = episodeCount.toString(),
+                    label = "Yeni bölüm",
+                    modifier = Modifier.weight(1f)
+                )
+                HeroStat(
+                    icon = Icons.Default.History,
+                    value = historyCount.toString(),
+                    label = "İzleme geçmişi",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroStat(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.16f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Column {
+            Text(
+                text = value,
+                color = Color.White,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = label,
+                color = Color.White.copy(alpha = 0.78f),
+                style = MaterialTheme.typography.labelSmall
+            )
         }
     }
 }
@@ -339,19 +490,35 @@ fun SettingsTab(
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         SectionHeader(title = "Ayarlar")
-        SimpleListItem(
-            leading = { Icon(Icons.Default.Storage, contentDescription = null) },
-            title = { Text("Depolama Yönetimi") },
-            onClick = onStorageClick,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        SimpleDivider(modifier = Modifier.padding(horizontal = 16.dp))
-        SimpleListItem(
-            leading = { Icon(Icons.Default.Settings, contentDescription = null) },
-            title = { Text("Uygulama Ayarları") },
-            onClick = onSettingsClick,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+        SimpleCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Column {
+                SimpleListItem(
+                    leading = { Icon(Icons.Default.Storage, contentDescription = null) },
+                    title = { Text("Depolama Yönetimi", color = TextPrimary) },
+                    subtitle = {
+                        Text(
+                            "İndirilen ve önbellek dosyalarını temizle",
+                            color = TextSecondary,
+                            fontSize = 13.sp
+                        )
+                    },
+                    onClick = onStorageClick
+                )
+                SimpleDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SimpleListItem(
+                    leading = { Icon(Icons.Default.Settings, contentDescription = null) },
+                    title = { Text("Uygulama Ayarları", color = TextPrimary) },
+                    subtitle = {
+                        Text(
+                            "İndirme, sunucu ve uygulama tercihleri",
+                            color = TextSecondary,
+                            fontSize = 13.sp
+                        )
+                    },
+                    onClick = onSettingsClick
+                )
+            }
+        }
     }
 }
 
@@ -495,17 +662,27 @@ fun BottomNavItem(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
-            ),
+            )
+            .padding(horizontal = 12.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = if (selected) Primary else TextSecondary,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
+        // Seçili sekme için marka renginde yuvarlak dolgu
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(if (selected) PrimaryContainer else Color.Transparent)
+                .padding(horizontal = 14.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (selected) Primary else TextSecondary,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,

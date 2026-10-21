@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Temel politika:
+        - Animecix trafiği ZORUNLU olarak TLS'e zorlanır (alan adı doğrulaması da
+          yalnızca https:// kabul ettiği için bu çift katmanlı bir güvenliktir).
+        - Kullanıcının kendi sunucusunu (HDWP indirme sunucusu) düz HTTP olarak
+          adresleyebilmesi için base-config'te cleartext izni bırakılmıştır.
+          Bu alan kapatılırsa kullanıcının yapılandırdığı sunucu adresi çalışmaz.
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">animecix.tv</domain>
+        <domain includeSubdomains="true">animecix.net</domain>
+        <domain includeSubdomains="true">animecix.one</domain>
+        <domain includeSubdomains="true">animecix.link</domain>
+        <domain includeSubdomains="true">animecix.best</domain>
+        <domain includeSubdomains="true">animecix.top</domain>
+        <domain includeSubdomains="true">animecix.cc</domain>
+        <domain includeSubdomains="true">animecix.xyz</domain>
+        <domain includeSubdomains="true">animecix.space</domain>
+        <domain includeSubdomains="true">animecix.site</domain>
+        <domain includeSubdomains="true">animecix.club</domain>
+        <domain includeSubdomains="true">animecix.pro</domain>
+        <domain includeSubdomains="true">animecix.app</domain>
+    </domain-config>
+</network-security-config>

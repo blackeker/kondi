@@ -110,18 +110,36 @@ class VideoDownloadService : Service() {
 
         if (Build.VERSION.SDK_INT >= 29) {
             try {
-                // Try with DATA_SYNC type first (Android 10+)
-                startForeground(9999, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-            } catch (e: Exception) {
-                // Fallback for strict devices or if permission missing (though it shouldn't be)
-                try {
-                     startForeground(9999, notification)
-                } catch (e2: Exception) {
-                    e2.printStackTrace()
-                }
+            // Try with DATA_SYNC type first (Android 10+)
+            startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } catch (e: Exception) {
+            Timber.w(e, "Foreground start with DATA_SYNC type failed, trying without type")
+            try {
+                startForeground(FOREGROUND_NOTIFICATION_ID, notification)
+            } catch (e2: Exception) {
+                Timber.e(e2, "startForeground failed - stopping service")
+                // startForeground başarısız olursa servis arka planda çalışmaya devam eder
+                // ve Android 12+ tarafında "Context.startForegroundService() did not then call
+                // Service.startForeground()" hatasıyla uygulama çöker. Servis düzgünce
+                // durdurulmalı.
+                stopSelf()
             }
-        } else {
-            startForeground(9999, notification)
         }
+        } else {
+            try {
+                startForeground(FOREGROUND_NOTIFICATION_ID, notification)
+            } catch (e: Exception) {
+                Timber.e(e, "startForeground failed - stopping service")
+                stopSelf()
+            }
+        }
+    }
+
+    companion object {
+        /**
+         * Foreground bildiriminin ID'si. Diğer indirme bildirimleriyle çakışmaması için
+         * ayrı bir değer kullanılır.
+         */
+        const val FOREGROUND_NOTIFICATION_ID = 9999
     }
 }

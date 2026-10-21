@@ -1,7 +1,8 @@
+package com.myanim.kondi.ui.animecix
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -495,8 +496,7 @@ fun DetailHeader(
             Box(
                 modifier = Modifier
                     .size(100.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(SurfaceElevated)
+                    .background(SurfaceElevated, RoundedCornerShape(12.dp))
                     .border(1.dp, OutlineVariant, RoundedCornerShape(12.dp))
             ) {
                 AsyncImage(
@@ -696,8 +696,7 @@ fun EpisodeItem(
                 Box(
                     modifier = Modifier
                         .size(80.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(SurfaceElevated)
+                        .background(SurfaceElevated, RoundedCornerShape(8.dp))
                 ) {
                     AsyncImage(
                         model = video.poster ?: "file:///android_asset/placeholder.png",

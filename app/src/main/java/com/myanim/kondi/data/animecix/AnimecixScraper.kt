@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.delay
 import java.nio.charset.StandardCharsets
 import java.util.Base64
@@ -34,12 +35,63 @@ class AnimecixScraper {
         private const val MAX_CACHE_SIZE = 100
         private const val CACHE_TTL_MS = 30 * 60 * 1000L
 
+        /** Alan adı listesi alınamazsa kullanılan güvenli varsayılan. */
+        const val FALLBACK_DOMAIN = "https://animecix.tv"
+
         private val detailsCache = ConcurrentHashMap<Int, CacheEntry<AnimecixAnime>>()
         private val sourcesCache = ConcurrentHashMap<Int, CacheEntry<List<AnimecixSource>>>()
         private val searchCache = ConcurrentHashMap<String, CacheEntry<List<AnimecixTitle>>>()
 
         private val apiSemaphore = Semaphore(1)
         @Volatile private var lastApiRequestTime = 0L
+
+        /** Alan adı çekme işleminin eşzamanlı çağrılarda tek seferde çalışmasını sağlar. */
+        private val domainMutex = kotlinx.coroutines.sync.Mutex()
+
+        /**
+         * Animecix alan adı doğrulaması.
+         *
+         * Alan adı listesi GİTHUB'daki harici bir depodan çekiliyor. Bu depoya erişim
+         * ele geçirilirse (depo sahibi hesabı / CDN önbellek zehirlemesi) uygulama
+         * tamamen saldırganın kontrolündeki bir alan adına yönlendirilir ve tüm
+         * istekler (Cookie dahil) oraya gider. Bu yüzden yalnızca "animecix" kök
+         * alan adını içeren, https şemalı, IP/ userinfo içermeyen adresler kabul edilir.
+         */
+        @JvmStatic
+        fun isValidAnimecixDomain(url: String): Boolean {
+            val trimmed = url.trim()
+            if (!trimmed.startsWith("https://", ignoreCase = true)) return false
+            val withoutScheme = trimmed.substring("https://".length)
+            if (withoutScheme.isBlank()) return false
+            // Path / query / fragment ve userinfo olmamalı
+            val hostPart = withoutScheme.substringBefore('/').substringBefore('?').substringBefore('#')
+            if (hostPart.isBlank()) return false
+            if (hostPart.contains('@')) return false
+            if (hostPart.contains(':')) return false // port/credentials
+            val host = hostPart.lowercase()
+            // IP adresı olmamalı
+            if (Regex("^\\d{1,3}(\\.\\d{1,3}){3}$").matches(host)) return false
+            // Kayıtlı alan adı "animecix" içermeli ve TDE'den önce gelmelidir.
+            // Etiket sayısı sabit değildir; kamu son eki (public suffix) bir veya iki
+            // etiketten oluşabilir:
+            //   animecix.tv, www.animecix.net, animecix.co.uk, animecix.com.tr
+            val labels = host.split('.').filter { it.isNotEmpty() }
+            if (labels.size < 2) return false
+            val animecixIndex = labels.indexOf("animecix")
+            if (animecixIndex < 0) return false
+            val suffixLabels = labels.subList(animecixIndex + 1, labels.size)
+            if (suffixLabels.isEmpty() || suffixLabels.size > 2) return false
+            // Son etiket (TLD) yalnızca harflerden oluşmalı, en az 2 karakter.
+            if (!suffixLabels.last().matches(Regex("^[a-z]{2,}$"))) return false
+            // Ara etiketler (co, com, org, ac ...) 2-3 harf olmalı.
+            // Böylece "animecix.evil.com" gibi alan adları reddedilir.
+            if (suffixLabels.size == 2 && !suffixLabels.first().matches(Regex("^[a-z]{2,3}$"))) {
+                return false
+            }
+            // Her etiket yalnızca harf/rakam/hyphen içerebilir.
+            if (!labels.all { it.matches(Regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")) }) return false
+            return true
+        }
     }
 
     private data class CacheEntry<T>(val value: T, val timestamp: Long) {
@@ -105,52 +157,63 @@ class AnimecixScraper {
 
     private suspend fun ensureDomain() {
         if (domainFetched) return
-        withContext(Dispatchers.IO) {
-            val context = try { com.myanim.kondi.KondiApplication.getContext() } catch (e: Exception) { null }
-            val sharedPrefs = context?.getSharedPreferences("kondi_prefs", android.content.Context.MODE_PRIVATE)
+        // Eşzamanlı çağrılarda alan adı yalnızca bir kez çekilsin.
+        domainMutex.withLock {
+            if (domainFetched) return
+            withContext(Dispatchers.IO) {
+                val context = try { com.myanim.kondi.KondiApplication.getContext() } catch (e: Exception) { null }
+                val sharedPrefs = context?.getSharedPreferences("kondi_prefs", android.content.Context.MODE_PRIVATE)
 
-            val cachedUrl = sharedPrefs?.getString("animecix_cached_domain", null)
-            if (cachedUrl != null && !domainFetched) {
-                baseUrl = cachedUrl
-                domainFetched = true
-                Timber.d("Loaded cached Animecix domain from SharedPreferences: $baseUrl")
-            }
+                val cachedUrl = sharedPrefs?.getString("animecix_cached_domain", null)
+                if (cachedUrl != null && isValidAnimecixDomain(cachedUrl)) {
+                    baseUrl = cachedUrl.trim()
+                    domainFetched = true
+                    Timber.d("Loaded cached Animecix domain from SharedPreferences: $baseUrl")
+                } else if (cachedUrl != null) {
+                    Timber.w("Cached Animecix domain rejected by validation, refetching: $cachedUrl")
+                    sharedPrefs.edit().remove("animecix_cached_domain").apply()
+                }
+                val urls = listOf(
+                    "https://raw.githubusercontent.com/Kraptor123/domainListesi/refs/heads/main/eklenti_domainleri.txt",
+                    "https://cdn.jsdelivr.net/gh/Kraptor123/domainListesi@main/eklenti_domainleri.txt"
+                )
+                var success = false
 
-            val urls = listOf(
-                "https://raw.githubusercontent.com/Kraptor123/domainListesi/refs/heads/main/eklenti_domainleri.txt",
-                "https://cdn.jsdelivr.net/gh/Kraptor123/domainListesi@main/eklenti_domainleri.txt"
-            )
-            var success = false
-
-            for (url in urls) {
-                try {
-                    val request = Request.Builder().url(url).build()
-                    client.newCall(request).execute().use { response ->
-                        if (response.isSuccessful) {
-                            val content = response.body?.string() ?: ""
-                            content.lines().forEach { line ->
-                                if (line.startsWith("|Animecix:")) {
-                                    val fetchedUrl = line.substringAfter("|Animecix:").trim()
-                                    if (fetchedUrl.isNotEmpty()) {
-                                        baseUrl = fetchedUrl
-                                        domainFetched = true
-                                        sharedPrefs?.edit()?.putString("animecix_cached_domain", fetchedUrl)?.apply()
-                                        Timber.d("Successfully fetched and cached Animecix domain from $url: $baseUrl")
-                                        success = true
+                for (url in urls) {
+                    if (success) break
+                    try {
+                        val request = Request.Builder().url(url).build()
+                        client.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) {
+                                val content = response.body?.string() ?: ""
+                                content.lines().forEach { line ->
+                                    if (line.startsWith("|Animecix:")) {
+                                        val fetchedUrl = line.substringAfter("|Animecix:").trim()
+                                        // Yalnızca doğrulanmış alan adı kabul edilir.
+                                        if (fetchedUrl.isNotEmpty() && isValidAnimecixDomain(fetchedUrl)) {
+                                            baseUrl = fetchedUrl
+                                            domainFetched = true
+                                            sharedPrefs?.edit()?.putString("animecix_cached_domain", fetchedUrl)?.apply()
+                                            Timber.d("Successfully fetched and cached Animecix domain from $url: $baseUrl")
+                                            success = true
+                                        } else if (fetchedUrl.isNotEmpty()) {
+                                            Timber.w("Rejected Animecix domain (failed validation): $fetchedUrl")
+                                        }
                                     }
                                 }
                             }
                         }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Timber.w(e, "Failed to fetch Animecix domain from $url")
                     }
-                    if (success) break
-                } catch (e: Exception) {
-                    Timber.w(e, "Failed to fetch Animecix domain from $url")
                 }
-            }
-            if (!domainFetched) {
-                baseUrl = "https://animecix.tv"
-                domainFetched = true
-                Timber.d("Fallback to default domain: $baseUrl")
+                if (!domainFetched) {
+                    baseUrl = FALLBACK_DOMAIN
+                    domainFetched = true
+                    Timber.d("Fallback to default domain: $baseUrl")
+                }
             }
         }
     }

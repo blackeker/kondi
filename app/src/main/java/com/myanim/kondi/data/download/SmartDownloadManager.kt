@@ -1,6 +1,7 @@
 package com.myanim.kondi.data.download
 
 import android.content.Context
+import android.util.Log
 import android.widget.Toast
 import com.myanim.kondi.data.animecix.AnimecixRepository
 import com.myanim.kondi.data.local.KondiDatabase
@@ -73,9 +74,11 @@ class SmartDownloadManager(private val context: Context) {
                         }
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // İptal edilmiş akış yeniden denenmemeli.
+                throw e
             } catch (e: Exception) {
-                e.printStackTrace()
-            }
+                Log.e("SmartDownloadManager", "Akıllı indirme hatası: ${e.message}", e)            }
         }
     }
 }

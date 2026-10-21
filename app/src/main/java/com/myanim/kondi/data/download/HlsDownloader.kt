@@ -12,8 +12,10 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.io.BufferedOutputStream
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.withPermit
 
 class HlsDownloader(private val context: android.content.Context, private val client: OkHttpClient) {
@@ -26,6 +28,10 @@ class HlsDownloader(private val context: android.content.Context, private val cl
         private const val BUFFER_SIZE = 262144    // 256 KB I/O buffer (Hız için artırıldı)
         private const val MAX_RETRIES = 5
         private const val RETRY_DELAY_MS = 500L  // Hızlı retry
+        /** Bozuk/yarım playlist ve segment patlamalarına karşı güvenlik üst sınırı. */
+        const val MAX_SEGMENTS = 10_000
+        /** Segment indirmesinin yarım kalmaması için kullanılan geçici uzantı. */
+        private const val PART_SUFFIX = ".part"
     }
     
     data class DownloadProgress(
@@ -133,6 +139,12 @@ class HlsDownloader(private val context: android.content.Context, private val cl
                 return@withContext false
             }
             
+            // Bozuk/istismar playlist'lerine karşı üst sınır: her segment ayrı dosya + koroutine demek.
+            if (segments.size > MAX_SEGMENTS) {
+                Log.e(TAG, "Playlist too large: ${segments.size} segments (max $MAX_SEGMENTS)")
+                return@withContext false
+            }
+            
             Log.d(TAG, "Found ${segments.size} segments")
             
             // Segmentleri indir
@@ -149,9 +161,25 @@ class HlsDownloader(private val context: android.content.Context, private val cl
             Log.d(TAG, "Merging ${tempFiles.size} segments...")
             mergeSegmentsOptimized(tempFiles, outputFile)
             
+            // Birleştirme sonrası bütünlük kontrolü: segment dosyaları eksikse video bozuk olur.
+            val expectedSize = tempFiles.sumOf { it.length() }
+            val actualSize = outputFile.length()
+            if (expectedSize <= 0L || actualSize != expectedSize) {
+                Log.e(TAG, "HLS merge size mismatch: expected $expectedSize bytes, got $actualSize")
+                // Bozuk dosya diskte bırakılmaz: aksi halde "indirilmiş" gibi görünür
+                // ve kullanıcı bozuk videoyu oynatamaz.
+                outputFile.delete()
+                return@withContext false
+            }
+            
             Log.d(TAG, "HLS download completed successfully: ${outputFile.absolutePath} (${outputFile.length() / 1024 / 1024} MB)")
             true
             
+        } catch (e: CancellationException) {
+            // İptal (kullanıcı iptali / servis ölümü) bir hata değil; yeniden fırlatılmalı ki
+            // üst katman coroutine'u doğru şekilde iptal edebilsin.
+            Log.w(TAG, "HLS download cancelled")
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "HLS download failed: ${e.message}", e)
             false
@@ -194,7 +222,7 @@ class HlsDownloader(private val context: android.content.Context, private val cl
                     semaphore.withPermit {
                         coroutineContext.ensureActive()
                         val tempFile = File(
-                            outputFile.parent,
+                            outputFile.parentFile ?: outputFile,
                             "${outputFile.nameWithoutExtension}_seg_${globalIndex.toString().padStart(5, '0')}.ts"
                         )
                         
@@ -247,6 +275,9 @@ class HlsDownloader(private val context: android.content.Context, private val cl
             
             Pair(tempFiles.toList(), true)
             
+        } catch (e: CancellationException) {
+            Log.w(TAG, "Segment download cancelled")
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Segment download failed: ${e.message}", e)
             Pair(tempFiles.toList(), false)
@@ -260,6 +291,9 @@ class HlsDownloader(private val context: android.content.Context, private val cl
     ): String = withContext(Dispatchers.IO) {
         try {
             downloadPlaylist(url, headers)
+        } catch (e: CancellationException) {
+            // İptal edilmiş bir indirme yeniden denenmemeli.
+            throw e
         } catch (e: Exception) {
             if (retryCount < MAX_RETRIES) {
                 Log.w(TAG, "Playlist download failed, retrying (${retryCount + 1}/$MAX_RETRIES)...")
@@ -364,6 +398,9 @@ class HlsDownloader(private val context: android.content.Context, private val cl
     ): Long = withContext(Dispatchers.IO) {
         try {
             downloadSegment(url, outputFile, headers)
+        } catch (e: CancellationException) {
+            // İptal edilmiş indirme yeniden denenmemeli.
+            throw e
         } catch (e: Exception) {
             if (retryCount < MAX_RETRIES) {
                 Log.w(TAG, "Segment $segmentIndex failed, retrying (${retryCount + 1}/$MAX_RETRIES)...")
@@ -394,25 +431,67 @@ class HlsDownloader(private val context: android.content.Context, private val cl
             headers["referer"]?.let { requestBuilder.addHeader("Referer", it) }
         }
         
+        // Yarım (kısmi) segment dosyası "tamamlanmış" sayılmasın diye önce .part dosyasına yazılır.
+        // Yazma bittikten ve boyut doğrulandıktan sonra atomik olarak hedef adıyla değiştirilir.
+        val partFile = File(outputFile.parentFile ?: outputFile, outputFile.name + PART_SUFFIX)
+        if (partFile.exists()) partFile.delete()
+
         Log.v("HlsDownloader", "Downloading segment: $url")
         client.newCall(requestBuilder.build()).execute().use { response ->
             if (!response.isSuccessful) {
                 Log.e("HlsDownloader", "Segment download failed: HTTP ${response.code} for $url")
-                throw Exception("Segment download failed: HTTP ${response.code}")
+                throw IOException("Segment download failed: HTTP ${response.code}")
             }
             
             Log.v("HlsDownloader", "Successfully opened segment stream: $url")
             val inputStream = response.body?.byteStream() 
-                ?: throw Exception("Empty segment response")
+                ?: throw IOException("Empty segment response")
+            
+            // Sunucu boyutu bildiriyorsa indirilen veriyle karşılaştıracağız.
+            val declaredLength = response.body?.contentLength()?.takeIf { it >= 0L }
             
             var totalBytes = 0L
-            BufferedOutputStream(FileOutputStream(outputFile), BUFFER_SIZE).use { outputStream ->
-                val buffer = ByteArray(BUFFER_SIZE)
-                var bytesRead: Int
-                
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
-                    totalBytes += bytesRead
+            try {
+                BufferedOutputStream(FileOutputStream(partFile), BUFFER_SIZE).use { outputStream ->
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    var bytesRead: Int
+                    
+                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        outputStream.write(buffer, 0, bytesRead)
+                        totalBytes += bytesRead
+                    }
+                }
+            } catch (e: Throwable) {
+                // Yarım dosya kalmasın: sonraki çalıştırmada "zaten indirilmiş" sanılmasın.
+                partFile.delete()
+                throw e
+            }
+            
+            if (totalBytes <= 0L) {
+                partFile.delete()
+                throw IOException("Empty segment downloaded: $url")
+            }
+            
+            if (declaredLength != null && declaredLength != totalBytes) {
+                partFile.delete()
+                throw IOException(
+                    "Segment size mismatch for $url: expected $declaredLength bytes, got $totalBytes"
+                )
+            }
+            
+            // Atomik tamamlama: eski hedef varsa sil, .part -> hedef
+            if (outputFile.exists() && !outputFile.delete()) {
+                partFile.delete()
+                throw IOException("Cannot replace existing segment file: ${outputFile.name}")
+            }
+            if (!partFile.renameTo(outputFile)) {
+                // Farklı dosya sistemi durumunda yedek yol
+                try {
+                    partFile.copyTo(outputFile, overwrite = true)
+                    partFile.delete()
+                } catch (e: Throwable) {
+                    partFile.delete()
+                    throw IOException("Cannot finalize segment file: ${outputFile.name}", e)
                 }
             }
             
@@ -429,7 +508,7 @@ class HlsDownloader(private val context: android.content.Context, private val cl
         }
 
         // Atomik birleştirme: önce geçici dosyaya yaz, sonra yeniden adlandır
-        val tempMerge = File(outputFile.parent, "${outputFile.name}.merging")
+        val tempMerge = File(outputFile.parentFile ?: outputFile, "${outputFile.name}.merging")
         
         // Zero-copy FileChannel ile yüksek hızlı segment birleştirme
         java.io.FileOutputStream(tempMerge, false).use { outFos ->

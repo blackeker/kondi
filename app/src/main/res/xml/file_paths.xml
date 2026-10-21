@@ -1,8 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        Not: 'external-path' ile TÜM harici depolama paylaşılabilir hale geliyordu
+        (path="."), bu da FileProvider üzerinden gereksiz yere bütün cihaz
+        dosyalarına erişim demek. Erişim yalnızca ihtiyaç duyulan dizinlere
+        daraltıldı:
+          - external-files-path : uygulamanın kendi harici dosya dizini (indirmeler)
+          - external-path/Download : herkese açık "Download" klasörü (dışa aktarım)
+    -->
     <files-path name="internal_files" path="." />
     <external-files-path name="external_files" path="." />
-    <external-path name="external_storage" path="." />
+    <external-path name="public_downloads" path="Download/" />
     <cache-path name="cache" path="." />
     <external-cache-path name="external_cache" path="." />
 </paths>

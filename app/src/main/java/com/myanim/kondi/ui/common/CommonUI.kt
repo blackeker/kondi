@@ -8,10 +8,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -135,20 +138,28 @@ fun SimpleCard(
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     val clickModifier = if (onClick != null) {
         Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onClick
-        )
+            interactionSource = interactionSource,
+            indication = ripple(color = Primary)
+        ) { onClick() }
     } else {
         Modifier
     }
 
     Card(
-        modifier = modifier.then(clickModifier),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceCard)
+        modifier = modifier
+            .then(clickModifier)
+            .shadow(
+                elevation = 2.dp,
+                shape = RoundedCornerShape(16.dp),
+                ambientColor = Color.Black.copy(alpha = 0.05f),
+                spotColor = Color.Black.copy(alpha = 0.05f)
+            ),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         content()
     }
@@ -289,7 +300,7 @@ fun SimpleListItem(
 fun SimpleDivider(
     modifier: Modifier = Modifier
 ) {
-    Divider(
+    HorizontalDivider(
         modifier = modifier,
         color = Divider,
         thickness = 1.dp

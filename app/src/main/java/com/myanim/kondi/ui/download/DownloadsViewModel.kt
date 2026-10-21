@@ -1,34 +1,43 @@
 package com.myanim.kondi.ui.download
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.myanim.kondi.data.download.DownloadManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.cancel
 
 class DownloadsViewModel(
     private val downloadManager: DownloadManager
 ) : ViewModel() {
 
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
+    // viewModelScope kullanılıyor: ViewModel yok edildiğinde tüm işler otomatik iptal edilir.
     private val _downloads = MutableStateFlow<List<DownloadItem>>(emptyList())
     val downloads: StateFlow<List<DownloadItem>> = _downloads.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    /** Aktif akış dinleyicisi. retry() çağrıldığında önceki dinleyici iptal edilir. */
+    private var collectJob: Job? = null
+
     init {
-        scope.launch {
+        startCollecting()
+    }
+
+    private fun startCollecting() {
+        collectJob?.cancel()
+        collectJob = viewModelScope.launch {
             try {
                 downloadManager.downloadsFlow.collect { downloads ->
                     _downloads.value = downloads.map { it.toDownloadItem() }
                 }
+            } catch (e: CancellationException) {
+                // İptal bir hata değildir; ViewModel yok edildiğinde hata durumu gösterilmemeli.
+                throw e
             } catch (e: Exception) {
                 _error.value = "İndirilenler yüklenemedi: ${e.message}"
             }
@@ -61,20 +70,12 @@ class DownloadsViewModel(
 
     fun retry() {
         _error.value = null
-        scope.launch {
-            try {
-                downloadManager.downloadsFlow.collect { downloads ->
-                    _downloads.value = downloads.map { it.toDownloadItem() }
-                }
-            } catch (e: Exception) {
-                _error.value = "İndirilenler yüklenemedi: ${e.message}"
-            }
-        }
+        startCollecting()
     }
 
     override fun onCleared() {
         super.onCleared()
-        scope.cancel()
+        collectJob?.cancel()
         downloadManager.destroy()
     }
 }
@@ -88,7 +89,8 @@ private fun com.myanim.kondi.data.local.Download.toDownloadItem(): DownloadItem 
         totalBytes = totalBytes,
         downloadedBytes = downloadedBytes,
         createdAt = createdAt,
-        errorMessage = errorMessage
+        errorMessage = errorMessage,
+        filePath = filePath
     )
 }
 
@@ -100,5 +102,7 @@ data class DownloadItem(
     val totalBytes: Long,
     val downloadedBytes: Long,
     val createdAt: Long,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    /** İndirilen dosyanın yolu (content:// URI veya mutlak dosya yolu). */
+    val filePath: String = ""
 )

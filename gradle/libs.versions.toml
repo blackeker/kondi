@@ -64,6 +64,13 @@ timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "tim
 play-services-mlkit-text-recognition = { group = "com.google.android.gms", name = "play-services-mlkit-text-recognition", version.ref = "mlkitTextRecognition" }
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version = "21.1.0" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version = "1.8.1" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version = "1.8.1" }
+# Not: Aşağıdaki kütüphaneler test kapsamını genişletmek için eklenmiştir. Gradle'ın
+# çevrimdışı (offline) çalıştığı ortamlarda çözülemezler; kullanılmadan önce bağlantı gerekir.
+robolectric = { group = "org.robolectric", name = "robolectric", version = "4.13" }
+mockk = { group = "io.mockk", name = "mockk", version = "1.13.11" }
+androidx-room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
+androidx-work-testing = { group = "androidx.work", name = "work-testing", version = "2.9.0" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 
 [plugins]

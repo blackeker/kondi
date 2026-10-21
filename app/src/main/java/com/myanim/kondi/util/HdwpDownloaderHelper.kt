@@ -36,7 +36,7 @@ object HdwpDownloaderHelper {
 
     fun formatServerUrl(rawInput: String): String {
         var ip = rawInput.trim().removeSuffix("/")
-        if (ip.isBlank() || ip.contains("localhost") || ip == "127.0.0.1") {
+        if (ip.isBlank()) {
             return DEFAULT_SERVER_URL
         }
         if (!ip.startsWith("http://") && !ip.startsWith("https://")) {
@@ -48,6 +48,17 @@ object HdwpDownloaderHelper {
             ip = "$ip:7860"
         }
         return ip
+    }
+
+    /**
+     * Loglara yazılacak WhatsApp numarasını maskeler.
+     * JID (telefon numarası) kişisel veridir; logcat'e açık yazılmamalıdır.
+     */
+    private fun maskJid(jid: String): String {
+        if (jid.isBlank()) return "(bos)"
+        val local = jid.substringBefore('@')
+        if (local.length <= 4) return "***@${jid.substringAfter('@', "")}"
+        return "***${local.takeLast(4)}@${jid.substringAfter('@', "")}"
     }
 
     fun formatJid(phoneInput: String): String {
@@ -81,7 +92,8 @@ object HdwpDownloaderHelper {
         val serverIp = formatServerUrl(rawIp)
         val jid = formatJid(targetPhone)
 
-        Log.d(TAG, "sendDownloadRequest: serverIp='$serverIp', jid='$jid', videoUrl='$videoUrl', title='$title'")
+        // Loglara telefon numarası (JID) ve ham indirme adresi yazılmaz: kişisel veri sızıntısı.
+        Log.d(TAG, "sendDownloadRequest: serverIp='$serverIp', jid='${maskJid(jid)}'")
 
         if (targetPhone.isBlank() || jid.isBlank()) {
             Log.w(TAG, "WhatsApp numarası boş! İstek iptal edildi.")
@@ -109,7 +121,8 @@ object HdwpDownloaderHelper {
         }.toString()
 
         val targetEndpoint = "$serverIp/api/indir"
-        Log.i(TAG, "🚀 HDWP Gönderiliyor -> URL=$targetEndpoint | Payload=$payload")
+        // Payload içeriği (video adresi + WhatsApp JID) loglanmaz.
+        Log.i(TAG, "HDWP gönderiliyor -> URL=$targetEndpoint | payloadSize=${payload.length}B")
 
         val request = Request.Builder()
             .url(targetEndpoint)
@@ -120,7 +133,8 @@ object HdwpDownloaderHelper {
             client.newCall(request).execute().use { response ->
                 val bodyStr = response.body?.string() ?: ""
                 val isSuccessful = response.isSuccessful
-                Log.i(TAG, "📥 HDWP Yanıt: HTTP ${response.code} | Body=$bodyStr")
+                // Sunucu yanıtı kısaltılarak loglanır (içerik hassas olabilir).
+                Log.i(TAG, "HDWP yanıt: HTTP ${response.code} | body=${bodyStr.take(200)}")
                 
                 withContext(Dispatchers.Main) {
                     if (isSuccessful) {
@@ -136,6 +150,9 @@ object HdwpDownloaderHelper {
                 }
                 isSuccessful
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // İptal edilmiş istek hataya dönüştürülmemeli; yeniden fırlatılır.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "❌ HDWP Hatası: ${e.message}", e)
             withContext(Dispatchers.Main) {
@@ -165,7 +182,7 @@ object HdwpDownloaderHelper {
         val serverIp = formatServerUrl(rawIp)
         val jid = formatJid(targetPhone)
 
-        Log.d(TAG, "sendBulkDownloadRequest: items=${items.size}, serverIp='$serverIp', jid='$jid', series='$seriesName'")
+        Log.d(TAG, "sendBulkDownloadRequest: items=${items.size}, serverIp='$serverIp', jid='${maskJid(jid)}'")
 
         if (targetPhone.isBlank() || jid.isBlank()) {
             Log.w(TAG, "WhatsApp numarası boş! İstek iptal edildi.")
@@ -197,7 +214,7 @@ object HdwpDownloaderHelper {
         }.toString()
 
         val targetEndpoint = "$serverIp/api/indir-multiple"
-        Log.i(TAG, "🚀 HDWP Bulk Gönderiliyor -> URL=$targetEndpoint | ${items.size} Bölüm")
+        Log.i(TAG, "HDWP Bulk gönderiliyor -> URL=$targetEndpoint | ${items.size} bölüm | payloadSize=${payload.length}B")
 
         val request = Request.Builder()
             .url(targetEndpoint)
@@ -208,7 +225,7 @@ object HdwpDownloaderHelper {
             client.newCall(request).execute().use { response ->
                 val bodyStr = response.body?.string() ?: ""
                 val isSuccessful = response.isSuccessful
-                Log.i(TAG, "📥 HDWP Bulk Yanıt: HTTP ${response.code} | Body=$bodyStr")
+                Log.i(TAG, "HDWP Bulk yanıt: HTTP ${response.code} | body=${bodyStr.take(200)}")
                 
                 withContext(Dispatchers.Main) {
                     if (isSuccessful) {
@@ -224,6 +241,9 @@ object HdwpDownloaderHelper {
                 }
                 isSuccessful
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // İptal edilmiş istek hataya dönüştürülmemeli; yeniden fırlatılır.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "❌ HDWP Bulk Hatası: ${e.message}", e)
             withContext(Dispatchers.Main) {

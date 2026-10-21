@@ -150,6 +150,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                             return@withContext null
                         }
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Timber.tag(TAG).e(e, "SibNet resolution failed: ${e.message}")
                     return@withContext null
@@ -287,6 +289,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                             return@withContext null
                         }
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Timber.tag(TAG).e(e, "Google Drive resolution failed")
                     return@withContext null
@@ -379,6 +383,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                             currentTauDelayMs = (currentTauDelayMs * 1.5).toLong().coerceAtMost(10000L)
                         }
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Timber.tag(TAG).w("TauVideo API attempt failed: ${e.message}. Retrying...")
                     retryCount++
@@ -471,6 +477,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                     }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "OkRu resolution failed")
         }
@@ -501,6 +509,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                      }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "HeavyArchive resolution failed")
         }
@@ -512,6 +522,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
         val domain = try {
             val uri = java.net.URI(url)
             "${uri.scheme}://${uri.host}"
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (url.contains("/e/")) url.substringBefore("/e/") else if (url.contains("/d/")) url.substringBefore("/d/") else url.substringBefore("/")
         }
@@ -587,6 +599,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                             return@withContext null
                         }
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     if (e is RuntimeException && e.message == "429") {
                         Timber.tag(TAG).w("Doodstream API failed: 429 - Retrying...")
@@ -636,6 +650,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                 
                 Timber.tag(TAG).w("Uqload: No video URL found in HTML")
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Uqload resolution failed")
         }
@@ -663,6 +679,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                     }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "StreamTape resolution failed")
         }
@@ -699,6 +717,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                     }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Voe resolution failed")
         }
@@ -729,6 +749,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                     }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "VidMoly resolution failed")
         }
@@ -754,6 +776,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                     }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "SendVid resolution failed")
         }
@@ -812,6 +836,8 @@ class AnimecixExtractors(baseClient: OkHttpClient) {
                      }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Generic resolution failed for $url")
         }

@@ -42,6 +42,15 @@ class DownloadNotificationManager private constructor(private val context: Conte
         private const val CHANNEL_ID = "downloads"
         private const val CHANNEL_NAME = "İndirmeler"
         private const val CHANNEL_DESCRIPTION = "Video indirme durumu bildirimleri"
+
+        /**
+         * Tamamlandı/başarısız bildirimleri için ayrı kanal.
+         * "downloads" kanalı IMPORTANCE_LOW olduğu için ses çalmaz; kullanıcı
+         * indirmenin bittiğinden veya BAŞARISIZ olduğundan haberdar olmazdı.
+         */
+        private const val CHANNEL_RESULT_ID = "downloads_result"
+        private const val CHANNEL_RESULT_NAME = "İndirme Sonuçları"
+        private const val CHANNEL_RESULT_DESCRIPTION = "İndirme tamamlandı veya başarısız oldu"
         
         // Action IDs
         const val ACTION_CANCEL = "com.myanim.kondi.ACTION_CANCEL_DOWNLOAD"
@@ -99,6 +108,8 @@ class DownloadNotificationManager private constructor(private val context: Conte
     
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
@@ -110,9 +121,20 @@ class DownloadNotificationManager private constructor(private val context: Conte
                 lightColor = context.getColor(R.color.purple_500)
                 enableVibration(false)
             }
-            
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            // Sonuç bildirimleri (tamamlandı/başarısız) yüksek öncelikli: kullanıcı
+            // indirmenin bittiğini veya hata oluştuğunu duymalı.
+            val resultChannel = NotificationChannel(
+                CHANNEL_RESULT_ID,
+                CHANNEL_RESULT_NAME,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = CHANNEL_RESULT_DESCRIPTION
+                enableVibration(true)
+            }
+
             manager.createNotificationChannel(channel)
+            manager.createNotificationChannel(resultChannel)
         }
     }
     
@@ -161,6 +183,44 @@ class DownloadNotificationManager private constructor(private val context: Conte
         }
     }
     
+    /**
+     * Başka uygulamalarla paylaşılabilir bir URI üretir.
+     *
+     * DÖNEM: Önceden FileProvider başarısız olursa `Uri.fromFile(file)` kullanılıyordu.
+     * Android 7+ (API 24) üzerinde file:// URI bir Intent ile paylaşıldığında
+     * FileUriExposedException fırlatır ve uygulama ÇÖKER. Bu yüzden:
+     *   1) FileProvider (tercih edilen)
+     *   2) MediaStore content URI
+     *   3) null -> ilgili bildirim aksiyonu hiç eklenmez
+     */
+    private fun buildShareableUri(file: File): Uri? {
+        try {
+            return FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("DownloadNotificationManager", "FileProvider could not provide URI for ${file.name}: ${e.message}")
+        }
+
+        try {
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, getMimeType(file.absolutePath))
+            }
+            val uri = context.contentResolver.insert(
+                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                values
+            )
+            if (uri != null) return uri
+        } catch (e: Exception) {
+            android.util.Log.w("DownloadNotificationManager", "MediaStore could not provide URI for ${file.name}: ${e.message}")
+        }
+
+        return null
+    }
+
     fun showCompletedNotification(id: String, title: String, filePath: String) {
         activeDownloads.remove(id)
         
@@ -170,41 +230,38 @@ class DownloadNotificationManager private constructor(private val context: Conte
             return
         }
         
-        val fileUri = try {
-            FileProvider.getUriForFile(
+        val fileUri = buildShareableUri(file)
+        
+        // file:// URI Android N+ üzerinde FileUriExposedException ile çökmeye yol açar.
+        // Paylaşılabilir bir URI üretilemezse "oynat" aksiyonu hiç eklenmez.
+        val openPendingIntent = fileUri?.let { uri ->
+            val openIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, getMimeType(filePath))
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+            }
+            PendingIntent.getActivity(
                 context,
-                "${context.packageName}.fileprovider",
-                file
+                id.hashCode(),
+                openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-        } catch (e: Exception) {
-            Uri.fromFile(file)
         }
         
-        val openIntent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(fileUri, getMimeType(filePath))
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+        val sharePendingIntent = fileUri?.let { uri ->
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = getMimeType(filePath)
+                putExtra(Intent.EXTRA_STREAM, uri)
+                flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+            }
+            PendingIntent.getActivity(
+                context,
+                (id.hashCode() + 1),
+                Intent.createChooser(shareIntent, "Videoyu Paylaş"),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
         }
         
-        val openPendingIntent = PendingIntent.getActivity(
-            context,
-            id.hashCode(),
-            openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = getMimeType(filePath)
-            putExtra(Intent.EXTRA_STREAM, fileUri)
-            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-        }
-        val sharePendingIntent = PendingIntent.getActivity(
-            context,
-            (id.hashCode() + 1),
-            Intent.createChooser(shareIntent, "Videoyu Paylaş"),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_RESULT_ID)
             .setContentTitle("✓ İndirme tamamlandı")
             .setContentText(title)
             .setSubText(formatBytes(file.length()))
@@ -212,13 +269,18 @@ class DownloadNotificationManager private constructor(private val context: Conte
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setColor(context.getColor(R.color.teal_200))
-            .setContentIntent(openPendingIntent)
             .setGroup(GROUP_DOWNLOADS)
-            .addAction(android.R.drawable.ic_menu_view, "Oynat", openPendingIntent)
-            .addAction(android.R.drawable.ic_menu_share, "Paylaş", sharePendingIntent)
             .setStyle(NotificationCompat.BigTextStyle()
-                .bigText("$title\n\n${formatBytes(file.length())} • Dosya kaydedildi ve izlemeye hazır!"))
-            .build()
+                .bigText("$title\n${formatBytes(file.length())} • Dosya kaydedildi ve izlemeye hazır!"))
+
+        openPendingIntent?.let {
+            notificationBuilder.setContentIntent(it)
+            notificationBuilder.addAction(android.R.drawable.ic_menu_view, "Oynat", it)
+        }
+        sharePendingIntent?.let {
+            notificationBuilder.addAction(android.R.drawable.ic_menu_share, "Paylaş", it)
+        }
+        val notification = notificationBuilder.build()
         
         try {
             notificationManager.notify(getNotificationId(id), notification)
@@ -231,7 +293,7 @@ class DownloadNotificationManager private constructor(private val context: Conte
     fun showFailedNotification(id: String, title: String, error: String) {
         activeDownloads.remove(id)
         
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(context, CHANNEL_RESULT_ID)
             .setContentTitle("✗ İndirme başarısız")
             .setContentText(title)
             .setSubText(error)

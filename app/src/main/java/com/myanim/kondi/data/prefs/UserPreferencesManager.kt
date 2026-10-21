@@ -2,20 +2,10 @@ package com.myanim.kondi.data.prefs
 
 import android.content.Context
 import android.content.SharedPreferences
+import timber.log.Timber
 
 class UserPreferencesManager private constructor(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("kondi_user_prefs", Context.MODE_PRIVATE)
-
-    companion object {
-        @Volatile
-        private var INSTANCE: UserPreferencesManager? = null
-
-        fun getInstance(context: Context): UserPreferencesManager {
-            return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: UserPreferencesManager(context.applicationContext).also { INSTANCE = it }
-            }
-        }
-    }
 
     var preferredSource: String?
         get() = prefs.getString("preferred_source", null)
@@ -26,7 +16,9 @@ class UserPreferencesManager private constructor(context: Context) {
     var downloadThreads: Int
         get() = prefs.getInt("download_threads", 6)
         set(value) {
-            prefs.edit().putInt("download_threads", value).apply()
+            // Aşırı değerler (örn. 1000 eşzamanlı bağlantı) cihazı kilitler.
+            val clamped = value.coerceIn(MIN_DOWNLOAD_THREADS, MAX_DOWNLOAD_THREADS)
+            prefs.edit().putInt("download_threads", clamped).apply()
         }
 
     var enableMultiChunk: Boolean
@@ -49,22 +41,45 @@ class UserPreferencesManager private constructor(context: Context) {
         
     fun extractHostAndSave(url: String) {
         try {
-            val lowerUrl = url.lowercase()
-            val host = when {
-                lowerUrl.contains("sibnet") -> "sibnet"
-                lowerUrl.contains("tau-video") || lowerUrl.contains("tau") -> "tau-video"
-                lowerUrl.contains("ok.ru") || lowerUrl.contains("odnoklassniki") -> "ok.ru"
-                lowerUrl.contains("dood") -> "dood"
-                lowerUrl.contains("uqload") -> "uqload"
-                lowerUrl.contains("voe") -> "voe"
-                lowerUrl.contains("streamtape") -> "streamtape"
+            val lowerUrl = url.lowercase().trim()
+            // Önce URL'nin HOST kısmı ayıklanır. Aksi halde yol içinde geçen bir
+            // kelime (örn. ".../tautology.mp4") yanlış video kaynağı olarak seçilir.
+            val host = HOST_PATTERN.find(lowerUrl)?.groupValues?.get(1)?.substringBefore(':')
+                ?: lowerUrl
+            val source = when {
+                host.contains("sibnet") -> "sibnet"
+                host.contains("tau") -> "tau-video"
+                host.contains("ok.ru") || host.contains("odnoklassniki") -> "ok.ru"
+                host.contains("dood") -> "dood"
+                host.contains("uqload") -> "uqload"
+                host.contains("voe") -> "voe"
+                host.contains("streamtape") -> "streamtape"
                 else -> null
             }
-            if (host != null) {
-                preferredSource = host
+            if (source != null) {
+                preferredSource = source
             }
         } catch (e: Exception) {
-            // Ignore
+            // Sessizce yutmak yerine kaydedilir: kaynak çıkarımı başarısız olursa
+            // nedeninin loglarda görünmesi gerekir.
+            Timber.w(e, "Video kaynağı çıkarılamadı: $url")
+        }
+    }
+
+    companion object {
+        @Volatile
+        private var INSTANCE: UserPreferencesManager? = null
+
+        const val MIN_DOWNLOAD_THREADS = 1
+        const val MAX_DOWNLOAD_THREADS = 16
+
+        /** URL'den host kısmını ayıklamak için kullanılan desen. */
+        private val HOST_PATTERN = Regex("^[a-z][a-z0-9+.-]*://([^/?#]+)")
+
+        fun getInstance(context: Context): UserPreferencesManager {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: UserPreferencesManager(context.applicationContext).also { INSTANCE = it }
+            }
         }
     }
 }

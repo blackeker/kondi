@@ -1,17 +1,28 @@
 package com.myanim.kondi.ui.download
 
+import android.content.Context
+import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import java.io.File
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,6 +41,7 @@ import com.myanim.kondi.ui.theme.*
 @Composable
 fun DownloadsTab(
     onItemClick: (() -> Unit)? = null,
+    onPlay: ((DownloadItem) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -42,6 +54,7 @@ fun DownloadsTab(
     val downloads: List<DownloadItem> = downloadsState.value
     val errorState = viewModel.error.collectAsStateWithLifecycle()
     val error: String? = errorState.value
+    var playbackError by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = modifier.fillMaxSize()) {
         SectionHeader(
@@ -49,14 +62,49 @@ fun DownloadsTab(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
         )
 
+        // Oynatma hatası (dosya bulunamadı gibi) kullanıcıya gösterilir.
+        playbackError?.let { message ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(StatusFailedContainer)
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ErrorOutline,
+                    contentDescription = null,
+                    tint = Error,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = message,
+                    color = Error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { playbackError = null }) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Kapat",
+                        tint = Error,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
         if (error != null) {
             ErrorState(
                 message = error,
                 onRetry = { viewModel.retry() },
                 modifier = Modifier.fillMaxSize()
             )
-        } else if (downloads.isEmpty()) {
-            LazyColumn(
+        } else if (downloads.isEmpty()) {            LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 16.dp)
             ) {
@@ -85,6 +133,14 @@ fun DownloadsTab(
                         onPause = { viewModel.pauseDownload(download.id) },
                         onResume = { viewModel.resumeDownload(download.id) },
                         onDelete = { viewModel.deleteDownload(download.id) },
+                        onPlay = { item ->
+                            // Dosya silinmiş/taşınmış olabilir; oynatmadan önce doğrula.
+                            if (isPlayableFile(context, item.filePath)) {
+                                onPlay?.invoke(item)
+                            } else {
+                                playbackError = "Dosya bulunamadı: ${item.title}"
+                            }
+                        },
                         onItemClick = onItemClick
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -112,6 +168,64 @@ fun DownloadsTab(
 }
 
 /**
+ * İndirilen dosya hâlâ mevcut mu kontrol eder.
+ *
+ * [path] mutlak dosya yolu, `file://` URI'si veya `content://` URI'si olabilir.
+ */
+private fun isPlayableFile(context: Context, path: String): Boolean {
+    if (path.isBlank()) return false
+    return try {
+        when {
+            path.startsWith("content://") -> {
+                context.contentResolver.openFileDescriptor(Uri.parse(path), "r")?.use { true } ?: false
+            }
+
+            path.startsWith("file://") -> {
+                val file = File(Uri.parse(path).path ?: return false)
+                file.exists() && file.length() > 0
+            }
+
+            else -> {
+                val file = File(path)
+                file.exists() && file.length() > 0
+            }
+        }
+    } catch (e: Exception) {
+        Log.w("DownloadsScreen", "Dosya kontrolü başarısız: ${e.message}")
+        false
+    }
+}
+
+/**
+ * İndirme durumu için renkli rozet.
+ */
+@Composable
+private fun StatusBadge(status: String) {
+    val (label, container, content) = when (status) {
+        "COMPLETED" -> Triple("Tamamlandı", StatusCompletedContainer, Success)
+        "DOWNLOADING" -> Triple("İndiriliyor", StatusDownloadingContainer, Primary)
+        "FAILED" -> Triple("Başarısız", StatusFailedContainer, Error)
+        "PAUSED" -> Triple("Duraklatıldı", StatusPausedContainer, Warning)
+        "PENDING" -> Triple("Bekliyor", StatusPendingContainer, TextSecondary)
+        else -> Triple(status, StatusPendingContainer, TextSecondary)
+    }
+
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(container)
+            .padding(horizontal = 7.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = content,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+/**
  * Tek bir indirme öğesi satırı
  */
 @Composable
@@ -122,6 +236,7 @@ internal fun DownloadItemRow(
     onPause: () -> Unit,
     onResume: () -> Unit,
     onDelete: () -> Unit,
+    onPlay: (DownloadItem) -> Unit,
     onItemClick: (() -> Unit)? = null
 ) {
     val statusColor = when (download.status) {
@@ -160,18 +275,23 @@ internal fun DownloadItemRow(
                         text = download.title,
                         style = MaterialTheme.typography.bodyLarge,
                         color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = statusColor,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StatusBadge(status = download.status)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = statusText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = statusColor,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 Row(
@@ -223,6 +343,15 @@ internal fun DownloadItemRow(
                             )
                         }
                         "COMPLETED" -> {
+                            // Oynat butonu yalnızca gerçekten indirilmiş
+                            // ve dosya yolu bilinen kayıtlarda görünür.
+                            if (download.filePath.isNotBlank()) {
+                                SimpleOutlinedButton(
+                                    text = "Oynat",
+                                    onClick = { onPlay(download) },
+                                    modifier = Modifier.size(80.dp, 32.dp)
+                                )
+                            }
                             SimpleOutlinedButton(
                                 text = "Sil",
                                 onClick = onDelete,
@@ -275,6 +404,7 @@ fun PreviewDownloadsTabWithDownloads() {
                 onPause = {},
                 onResume = {},
                 onDelete = {},
+                onPlay = {},
                 onItemClick = {}
             )
             Spacer(modifier = Modifier.height(16.dp))
@@ -293,6 +423,7 @@ fun PreviewDownloadsTabWithDownloads() {
                 onPause = {},
                 onResume = {},
                 onDelete = {},
+                onPlay = {},
                 onItemClick = {}
             )
         }
@@ -318,7 +449,7 @@ fun StorageTab(
                 navigationIcon = {
                     IconButton(onClick = onClose) {
                         Icon(
-                            imageVector = Icons.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Geri"
                         )
                     }
